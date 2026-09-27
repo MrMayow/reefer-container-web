@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Учебный стенд для размещения рефрижераторных контейнеров по площадкам.">
+  <title>Размещение рефрижераторных контейнеров</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/style.css?v=exhaustive-1">
+  <script src="/app.js?v=exhaustive-3" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">RC</span><div><strong>Рефрижераторный терминал</strong><small>Учебная модель распределения</small></div></div>
+    <span class="version">ПРОТОТИП · 01</span>
+  </header>
+
+  <main class="page">
+    <section class="page-head">
+      <div><p class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p><h1>Размещение контейнеров</h1><p>Перенесите контейнер на площадку или выберите её в таблице. Стоимость и ограничения пересчитаются сразу.</p></div>
+      <div class="formula-card"><span>Цель модели</span><strong>Минимум суммарных затрат</strong><small>при соблюдении всех ограничений</small></div>
+    </section>
+
+    <section class="control-strip" aria-label="Создание примера">
+      <div class="control-label"><strong>Данные задачи</strong><span>Все параметры задаются целыми числами</span></div>
+      <label>Контейнеры <input id="generate-count" type="number" min="1" max="80" step="1" value="12"></label>
+      <label>Площадки <input id="generate-sites" type="number" min="1" max="10" step="1" value="3"></label>
+      <label>Зерно <input id="generate-seed" type="number" min="0" max="999999" step="1" value="26" title="Одинаковое зерно повторяет пример"></label>
+      <button id="generate-button" class="button primary" type="button">Сгенерировать</button>
+    </section>
+
+    <div id="message" class="message" role="status" aria-live="polite"></div>
+
+    <section class="main-grid">
+      <div class="workspace-panel">
+        <div class="section-heading"><div><p class="eyebrow">ПЛАН ТЕРМИНАЛА</p><h2>Площадки и контейнеры</h2></div><span id="selection-hint" class="muted">Выберите контейнер, затем площадку</span></div>
+        <div id="board" class="board" aria-label="Схема площадок"></div>
+        <div class="board-note">Зажмите контейнер и перетащите его мышью или пальцем на площадку. Для клавиатуры выберите контейнер кнопкой и нажмите Enter на нужной площадке.</div>
+      </div>
+
+      <aside class="summary-panel">
+        <p class="eyebrow">ТЕКУЩИЙ ПЛАН</p>
+        <div class="total" id="total-cost">—</div>
+        <div class="total-caption">расчётная стоимость, ₽</div>
+        <div id="plan-status" class="status">Загрузка…</div>
+        <div class="summary-divider"></div>
+        <h3>Использование площадок</h3>
+        <div id="load-summary"></div>
+        <div class="summary-divider"></div>
+        <h3>Нарушения</h3>
+        <div id="issues" class="issues">Проверка…</div>
+        <p class="proof-note">Оптимальность доказывается после завершения метода ветвей и границ или полного перебора. Ручной план и генетический алгоритм такого доказательства не дают.</p>
+      </aside>
+    </section>
+
+    <section class="methods-panel">
+      <div class="section-heading"><div><p class="eyebrow">СПОСОБ РАЗМЕЩЕНИЯ</p><h2>Выберите подход</h2></div><span class="muted">Алгоритмы работают на Python</span></div>
+      <div class="method-tabs" role="tablist" aria-label="Методы решения">
+        <button class="method-tab active" type="button" role="tab" aria-selected="true" data-method="manual">Ручное размещение<span>Работает</span></button>
+        <button class="method-tab" type="button" role="tab" aria-selected="false" data-method="branch_bound">Ветви и границы<span>Работает</span></button>
+        <button class="method-tab" type="button" role="tab" aria-selected="false" data-method="genetic">Генетический алгоритм<span>Работает</span></button>
+        <button class="method-tab" type="button" role="tab" aria-selected="false" data-method="exhaustive">Полный перебор<span>Работает</span></button>
+      </div>
+      <div id="method-content" class="method-content" role="tabpanel"></div>
+    </section>
+
+    <section class="details-grid">
+      <section class="data-panel">
+        <div class="section-heading"><div><p class="eyebrow">ИСХОДНЫЕ ДАННЫЕ</p><h2>Контейнеры</h2></div><button id="add-container" class="button secondary" type="button">+ Контейнер</button></div>
+        <div class="table-wrap"><table id="containers-table"><caption class="sr-only">Параметры контейнеров</caption></table></div>
+      </section>
+      <section class="data-panel">
+        <div class="section-heading"><div><p class="eyebrow">РЕСУРСЫ</p><h2>Площадки</h2></div><button id="add-site" class="button secondary" type="button">+ Площадка</button></div>
+        <div class="table-wrap"><table id="sites-table"><caption class="sr-only">Параметры площадок</caption></table></div>
+      </section>
+    </section>
+
+    <section class="settings-panel">
+      <div><p class="eyebrow">ОБЩИЕ УСЛОВИЯ</p><h2>Срок и тариф</h2></div>
+      <label>Предельное время C, ч <input id="limit-hours" type="number" min="0" step="1"></label>
+      <label>Тариф перевозки d<sub>j</sub> <select id="tariff-mode"><option value="container_hour">₽ / контейнер·ч</option><option value="ton_hour">₽ / т·ч</option></select></label>
+      <p id="formula-explanation" class="formula-explanation"></p>
+    </section>
+
+    <section class="cost-panel">
+      <div class="section-heading"><div><p class="eyebrow">ДЕТАЛИ РАСЧЁТА</p><h2>Стоимость по контейнерам</h2></div><span class="muted">Назначение можно изменить в последнем столбце</span></div>
+      <div class="table-wrap"><table id="cost-table"><caption class="sr-only">Стоимость по контейнерам и назначение</caption></table></div>
+    </section>
+  </main>
+  <footer>Учебная модель: ресурсы площадки резервируются под всю партию; расписание техники не учитывается.</footer>
+</body>
+</html>
