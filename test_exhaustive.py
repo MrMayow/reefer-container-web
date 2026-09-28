@@ -1,6 +1,7 @@
 """Проверка настоящего полного перебора и доказательств результата."""
 
 import unittest
+import os
 from itertools import count
 from unittest.mock import patch
 
@@ -49,7 +50,7 @@ class ExhaustiveTests(unittest.TestCase):
         task = generate_example(20, 2, 3)
         updates = []
         with patch("exhaustive.perf_counter", side_effect=count()):
-            answer = solve_exhaustive(task, progress=updates.append)
+            answer = solve_exhaustive(task, {"workers": 1}, progress=updates.append)
         self.assertEqual(answer["status"], "optimal")
         self.assertEqual(answer["checkedCount"], 2 ** 20)
         self.assertEqual(answer["checkedCount"], answer["validCount"] + answer["invalidCount"])
@@ -59,6 +60,19 @@ class ExhaustiveTests(unittest.TestCase):
         self.assertTrue(all(a["checkedCount"] < b["checkedCount"]
                             for a, b in zip(updates, updates[1:])))
         self.assertEqual(updates[-1]["totalCombinations"], answer["totalCombinations"])
+
+    def test_parallel_matches_single_process(self):
+        workers = min(4, os.cpu_count() or 1)
+        if workers < 2:
+            self.skipTest("Для проверки нужны два ядра процессора.")
+        task = generate_example(18, 2, 7)
+        single = solve_exhaustive(task, {"workers": 1})
+        parallel = solve_exhaustive(task, {"workers": workers})
+        self.assertEqual(parallel["workers"], workers)
+        for key in ("status", "checkedCount", "validCount", "invalidCount",
+                    "bestCost", "bestAssignment"):
+            self.assertEqual(parallel[key], single[key])
+        self.assertEqual(parallel["history"][-1]["checkedCount"], 2 ** 18)
 
     def test_complete_search_proves_infeasible(self):
         task = generate_example(2, 1, 3)

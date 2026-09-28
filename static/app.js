@@ -369,6 +369,7 @@ function renderExhaustiveProgress(state, finished = false) {
   const stats = make("div", "", "metrics");
   stats.append(metric("Проверено", fmt.format(done) + " / " + fmt.format(total)),
     metric("Прогресс", percent === 0 && done > 0 ? "< 0,01 %" : percent + " %"),
+    metric("Процессов", fmt.format(state.workers)),
     metric("Скорость", speed ? fmt.format(Math.round(speed)) + " назнач./с" : "—"),
     metric("Прошло", duration(state.elapsedSeconds)),
     metric("Осталось примерно", finished ? "0 с" : remaining));
@@ -481,7 +482,7 @@ async function runMethod(method) {
   } else if (method === "branch_bound") {
     options = { nodeLimit: Number($("bb-limit").value) };
   } else {
-    options = {};
+    options = { workers: Number($("full-workers").value) };
   }
   if (method === "branch_bound" && $("bb-start").checked && runs.genetic?.bestAssignment) {
     options.incumbentAssignment = runs.genetic.bestAssignment;

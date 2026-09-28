@@ -7,7 +7,7 @@
   <title>Размещение контейнеров</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css?v=2">
-  <script src="/app.js?v=9" defer></script>
+  <script src="/app.js?v=10" defer></script>
 </head>
 <body>
   <header><h1>Размещение рефрижераторных контейнеров</h1></header>
@@ -81,6 +81,7 @@
       </div>
       <div id="exhaustive-panel" hidden>
         <div class="controls">
+          <label>Процессы (0 = авто) <input id="full-workers" type="number" min="0" step="1" value="0"></label>
           <button id="full-run">Запустить</button>
           <button id="full-stop" hidden>Остановить</button>
         </div>
