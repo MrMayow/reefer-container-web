@@ -7,7 +7,7 @@
   <title>Размещение контейнеров</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css?v=2">
-  <script src="/app.js?v=8" defer></script>
+  <script src="/app.js?v=9" defer></script>
 </head>
 <body>
   <header><h1>Размещение рефрижераторных контейнеров</h1></header>
@@ -82,7 +82,9 @@
       <div id="exhaustive-panel" hidden>
         <div class="controls">
           <button id="full-run">Запустить</button>
+          <button id="full-stop" hidden>Остановить</button>
         </div>
+        <div id="exhaustive-progress" class="result" role="status"></div>
         <div id="exhaustive-result" class="result"></div>
       </div>
     </section>

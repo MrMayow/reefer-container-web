@@ -1,6 +1,8 @@
 """Проверка настоящего полного перебора и доказательств результата."""
 
 import unittest
+from itertools import count
+from unittest.mock import patch
 
 from branch_bound import solve_branch_bound
 from exhaustive import solve_exhaustive
@@ -45,11 +47,18 @@ class ExhaustiveTests(unittest.TestCase):
 
     def test_search_checks_more_than_old_million_limit(self):
         task = generate_example(20, 2, 3)
-        answer = solve_exhaustive(task)
+        updates = []
+        with patch("exhaustive.perf_counter", side_effect=count()):
+            answer = solve_exhaustive(task, progress=updates.append)
         self.assertEqual(answer["status"], "optimal")
         self.assertEqual(answer["checkedCount"], 2 ** 20)
         self.assertEqual(answer["checkedCount"], answer["validCount"] + answer["invalidCount"])
         self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
+        self.assertEqual(updates[0]["checkedCount"], 0)
+        self.assertGreater(len(updates), 1)
+        self.assertTrue(all(a["checkedCount"] < b["checkedCount"]
+                            for a, b in zip(updates, updates[1:])))
+        self.assertEqual(updates[-1]["totalCombinations"], answer["totalCombinations"])
 
     def test_complete_search_proves_infeasible(self):
         task = generate_example(2, 1, 3)

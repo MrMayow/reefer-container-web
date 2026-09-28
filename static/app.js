@@ -7,6 +7,7 @@ let revision = 0;
 let requestId = 0;
 let drag = null;
 let ignoreClickUntil = 0;
+let exhaustiveController = null;
 const runs = { genetic: null, branch_bound: null, exhaustive: null };
 const stages = { genetic: 0, branch_bound: 0, exhaustive: 0 };
 const fmt = new Intl.NumberFormat("ru-RU");
@@ -38,7 +39,38 @@ async function post(path, data) {
   return body;
 }
 
+async function postStream(data, onProgress, signal) {
+  const response = await fetch("/api/solve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...data, stream: true }),
+    signal
+  });
+  if (!response.ok) throw new Error("Ошибка сервера");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let answer;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    let end;
+    while ((end = pending.indexOf("\n")) >= 0) {
+      const event = JSON.parse(pending.slice(0, end));
+      pending = pending.slice(end + 1);
+      if (event.type === "progress") onProgress(event);
+      else if (event.type === "result") answer = event.result;
+      else if (event.type === "error") throw new Error(event.error);
+    }
+  }
+  if (!answer) throw new Error("Сервер не вернул результат перебора.");
+  return answer;
+}
+
 function resetRuns() {
+  if (exhaustiveController) exhaustiveController.abort();
+  $("exhaustive-progress").replaceChildren();
   revision++;
   for (const method in runs) runs[method] = null;
   $("bb-start").checked = false;
@@ -316,6 +348,33 @@ function metric(name, value) {
   return box;
 }
 
+function duration(seconds) {
+  if (seconds < 60) return Math.ceil(seconds) + " с";
+  if (seconds < 3600) return Math.ceil(seconds / 60) + " мин";
+  if (seconds < 86400) return Math.ceil(seconds / 3600) + " ч";
+  if (seconds < 31536000) return Math.ceil(seconds / 86400) + " сут";
+  return "более года";
+}
+
+function renderExhaustiveProgress(state, finished = false) {
+  const box = $("exhaustive-progress");
+  const done = BigInt(state.checkedCount);
+  const total = BigInt(state.totalCombinations);
+  const percent = Number(done * 10000n / total) / 100;
+  const speed = state.elapsedSeconds ? state.checkedCount / state.elapsedSeconds : 0;
+  const remaining = speed ? duration(Number(total - done) / speed) : "—";
+  const bar = make("progress");
+  bar.max = 100;
+  bar.value = percent;
+  const stats = make("div", "", "metrics");
+  stats.append(metric("Проверено", fmt.format(done) + " / " + fmt.format(total)),
+    metric("Прогресс", percent === 0 && done > 0 ? "< 0,01 %" : percent + " %"),
+    metric("Скорость", speed ? fmt.format(Math.round(speed)) + " назнач./с" : "—"),
+    metric("Прошло", duration(state.elapsedSeconds)),
+    metric("Осталось примерно", finished ? "0 с" : remaining));
+  box.replaceChildren(make("p", finished ? "Перебор завершён" : "Перебор выполняется"), bar, stats);
+}
+
 function renderRun(method) {
   const box = $(method + "-result");
   box.replaceChildren();
@@ -428,18 +487,36 @@ async function runMethod(method) {
     options.incumbentAssignment = runs.genetic.bestAssignment;
   }
   const started = revision;
+  const controller = method === "exhaustive" ? new AbortController() : null;
+  if (controller) {
+    exhaustiveController = controller;
+    $("full-stop").hidden = false;
+    $("exhaustive-progress").replaceChildren();
+  }
   button.disabled = true;
   $(method + "-result").textContent = "Вычисляется…";
   try {
-    const answer = await post("/api/solve", { method, task, options });
+    const answer = controller
+      ? await postStream({ method, task, options }, (state) => {
+          if (started === revision) renderExhaustiveProgress(state);
+        }, controller.signal)
+      : await post("/api/solve", { method, task, options });
     if (started !== revision) return;
     runs[method] = answer;
     stages[method] = Math.max(0, (answer.history || []).length - 1);
+    if (controller) renderExhaustiveProgress(answer, true);
     if (method === "genetic") $("bb-start").disabled = !answer.bestAssignment;
   } catch (error) {
-    if (started === revision) runs[method] = { error: error.message };
+    if (started === revision) {
+      runs[method] = { error: error.name === "AbortError" ? "Расчёт остановлен." : error.message };
+      if (controller) $("exhaustive-progress").replaceChildren();
+    }
   } finally {
     button.disabled = false;
+    if (controller && exhaustiveController === controller) {
+      exhaustiveController = null;
+      $("full-stop").hidden = true;
+    }
     if (started === revision) renderRun(method);
   }
 }
@@ -511,6 +588,7 @@ $("ga-mutation-enabled").onchange = updateMutationControls;
 updateMutationControls();
 $("bb-run").onclick = () => runMethod("branch_bound");
 $("full-run").onclick = () => runMethod("exhaustive");
+$("full-stop").onclick = () => exhaustiveController?.abort();
 
 fetch("/api/example").then((response) => response.json()).then((data) => {
   task = data;

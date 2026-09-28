@@ -22,6 +22,7 @@ SOLVERS = {"genetic": solve_genetic, "branch_bound": solve_branch_bound,
 class LocalServer(ThreadingHTTPServer):
     # В Windows SO_REUSEADDR может разрешить две копии сервера на одном порту.
     allow_reuse_address = False
+    daemon_threads = True
 
     def server_bind(self):
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
@@ -38,6 +39,25 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def stream_exhaustive(self, task, options):
+        """Отправляет промежуточные счётчики и затем полный результат."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+        def send_event(value):
+            self.wfile.write((json.dumps(value, ensure_ascii=False) + "\n").encode("utf-8"))
+            self.wfile.flush()
+
+        try:
+            result = solve_exhaustive(task, options, lambda state: send_event({"type": "progress", **state}))
+            send_event({"type": "result", "result": result})
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass  # Пользователь закрыл страницу или остановил расчёт.
+        except (ValueError, TypeError) as exc:
+            send_event({"type": "error", "error": str(exc)})
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -78,6 +98,9 @@ class Handler(BaseHTTPRequestHandler):
                 method = data.get("method")
                 if not isinstance(method, str) or method not in SOLVERS:
                     raise ValueError("Неизвестный метод решения.")
+                if method == "exhaustive" and data.get("stream") is True:
+                    self.stream_exhaustive(data.get("task"), data.get("options"))
+                    return
                 result = SOLVERS[method](data.get("task"), data.get("options"))
             self.send_json(result)
         except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:

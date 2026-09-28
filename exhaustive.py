@@ -1,11 +1,12 @@
 """Полный перебор назначений контейнеров без отсечения ветвей."""
 
 from itertools import product
+from time import perf_counter
 
 from model import evaluate, placement_options, verified_assignment
 
 
-def solve_exhaustive(task, options=None):
+def solve_exhaustive(task, options=None, progress=None):
     """Проверяет каждое полное назначение и записывает этапы."""
     evaluate(task)  # Та же проверка целых исходных данных, что и у других методов.
     if options is None:
@@ -24,6 +25,7 @@ def solve_exhaustive(task, options=None):
     best = None
     history = []
     checkpoint = max(1, total // 60)
+    started_at = last_report = perf_counter()
 
     def record(event):
         stage = {"event": event, "checkedCount": checked_count,
@@ -37,6 +39,9 @@ def solve_exhaustive(task, options=None):
             history[-1] = stage
 
     record("Начало перебора")
+    if progress:
+        progress({"checkedCount": 0, "validCount": 0, "bestCost": None,
+                  "totalCombinations": str(total), "elapsedSeconds": 0})
     # product создаёт назначения по одному. Каждая комбинация учитывается,
     # даже если она нарушает срок или ресурсы площадки.
     for plan in product(range(m), repeat=n):
@@ -66,6 +71,13 @@ def solve_exhaustive(task, options=None):
                 record("Найден более дешёвый допустимый план")
         if checked_count % checkpoint == 0:
             record("Промежуточный этап")
+        if progress and checked_count % 8192 == 0:
+            now = perf_counter()
+            if now - last_report >= 0.5:
+                progress({"checkedCount": checked_count, "validCount": valid_count,
+                          "bestCost": best_cost, "totalCombinations": str(total),
+                          "elapsedSeconds": now - started_at})
+                last_report = now
 
     if best is not None:
         status = "optimal"
@@ -85,4 +97,5 @@ def solve_exhaustive(task, options=None):
         assignment = verified_assignment(task, best, best_cost)
         answer["bestCost"] = best_cost
         answer["bestAssignment"] = assignment
+    answer["elapsedSeconds"] = perf_counter() - started_at
     return answer
