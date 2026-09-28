@@ -24,6 +24,7 @@ def solve_genetic(task, options=None):
     mutation_type = options.get("mutationType", "swap")
     if mutation_type not in ("move", "swap"):
         raise ValueError("Тип мутации: выберите перенос или обмен.")
+    mutation_probability = integer_option(options, "mutationProbability", 60, 0, 100)
     rng = random.Random(seed)
 
     containers = task["containers"]
@@ -112,7 +113,8 @@ def solve_genetic(task, options=None):
                 "provenOptimal": False, "message": "Допустимый план не найден. Это не доказывает, что его нет.",
                 "history": [], "generationsRun": 0, "populationSize": population_size,
                 "seed": seed, "selectionMethod": selection_method,
-                "mutationEnabled": mutation_enabled, "mutationType": mutation_type}
+                "mutationEnabled": mutation_enabled, "mutationType": mutation_type,
+                "mutationProbability": mutation_probability}
     while len(population) < population_size:
         population.append(population[rng.randrange(len(population))])
 
@@ -149,7 +151,8 @@ def solve_genetic(task, options=None):
                     repairs += 1
                 else:
                     child = min((first, second), key=plan_cost)
-            if mutation_enabled and rng.random() < 0.6:
+            if (mutation_enabled and mutation_probability > 0
+                    and rng.random() < mutation_probability / 100):
                 changed = mutate(child)
                 if changed != child:
                     mutations += 1
@@ -169,4 +172,5 @@ def solve_genetic(task, options=None):
             "history": history, "generationsRun": generations,
             "populationSize": population_size, "seed": seed,
             "selectionMethod": selection_method,
-            "mutationEnabled": mutation_enabled, "mutationType": mutation_type}
+            "mutationEnabled": mutation_enabled, "mutationType": mutation_type,
+            "mutationProbability": mutation_probability}
