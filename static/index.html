@@ -7,7 +7,7 @@
   <title>Размещение контейнеров</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css?v=2">
-  <script src="/app.js?v=3" defer></script>
+  <script src="/app.js?v=4" defer></script>
 </head>
 <body>
   <header><h1>Размещение рефрижераторных контейнеров</h1></header>
@@ -51,6 +51,12 @@
           <label>Поколения <input id="ga-generations" type="number" min="1" max="200" value="60"></label>
           <label>Популяция <input id="ga-population" type="number" min="4" max="80" value="36"></label>
           <label>Зерно <input id="ga-seed" type="number" min="0" max="999999" value="26"></label>
+          <label>Отбор родителей
+            <select id="ga-selection">
+              <option value="tournament">Турнир из трёх</option>
+              <option value="best_half">Лучшая половина</option>
+            </select>
+          </label>
           <button id="ga-run">Запустить</button>
         </div>
         <div id="genetic-result" class="result"></div>

@@ -22,6 +22,9 @@ def solve_genetic(task, options=None):
     generations = _option(options, "generations", 60, 1, 200)
     population_size = _option(options, "populationSize", 36, 4, 80)
     seed = _option(options, "seed", 26, 0, 999999)
+    selection_method = options.get("selectionMethod", "tournament")
+    if selection_method not in ("tournament", "best_half"):
+        raise ValueError("Способ отбора: выберите турнир или лучшую половину.")
     rng = random.Random(seed)
 
     containers = task["containers"]
@@ -119,7 +122,8 @@ def solve_genetic(task, options=None):
     if not population:
         return {"method": "genetic", "implemented": True, "status": "not_found",
                 "provenOptimal": False, "message": "Допустимый план не найден. Это не доказывает, что его нет.",
-                "history": [], "generationsRun": 0, "populationSize": population_size, "seed": seed}
+                "history": [], "generationsRun": 0, "populationSize": population_size,
+                "seed": seed, "selectionMethod": selection_method}
     while len(population) < population_size:
         population.append(population[rng.randrange(len(population))])
 
@@ -134,15 +138,18 @@ def solve_genetic(task, options=None):
 
     record(0, 0, 0, 0)
 
-    def select():
-        group = rng.sample(population, 3)
-        return min(group, key=plan_cost)
+    def select(parent_pool):
+        if selection_method == "best_half":
+            return rng.choice(parent_pool)
+        return min(rng.sample(parent_pool, 3), key=plan_cost)
 
     for generation in range(1, generations + 1):
+        parent_pool = (sorted(population, key=plan_cost)[:population_size // 2]
+                       if selection_method == "best_half" else population)
         new_population = [best]  # Элитизм: лучший план никогда не теряется.
         crossovers = mutations = repairs = 0
         while len(new_population) < population_size:
-            first, second = select(), select()
+            first, second = select(parent_pool), select(parent_pool)
             preferred = tuple(first[i] if rng.random() < 0.5 else second[i] for i in range(n))
             crossovers += 1
             if feasible(preferred):
@@ -173,4 +180,5 @@ def solve_genetic(task, options=None):
             "provenOptimal": False, "message": "Найден допустимый план; оптимальность не доказана.",
             "bestCost": final_check["totalCost"], "bestAssignment": assignment,
             "history": history, "generationsRun": generations,
-            "populationSize": population_size, "seed": seed}
+            "populationSize": population_size, "seed": seed,
+            "selectionMethod": selection_method}

@@ -327,6 +327,10 @@ function renderRun(method) {
     hasPlan ? "Лучший найденный план: " + money(run.bestCost) :
       run.provenInfeasible ? "Допустимого плана нет" : "План пока не найден";
   box.append(make("h3", title), make("p", run.message));
+  if (method === "genetic") {
+    const selection = run.selectionMethod === "best_half" ? "лучшая половина" : "турнир из трёх";
+    box.append(make("p", "Отбор родителей: " + selection + "."));
+  }
   if (hasPlan && calculation?.valid) {
     box.append(make("p", "Текущий план: " + money(calculation.totalCost)));
   }
@@ -404,7 +408,8 @@ async function runMethod(method) {
   const options = method === "genetic" ? {
     generations: Number($("ga-generations").value),
     populationSize: Number($("ga-population").value),
-    seed: Number($("ga-seed").value)
+    seed: Number($("ga-seed").value),
+    selectionMethod: $("ga-selection").value
   } : method === "branch_bound" ? {
     nodeLimit: Number($("bb-limit").value)
   } : { combinationLimit: Number($("full-limit").value) };
