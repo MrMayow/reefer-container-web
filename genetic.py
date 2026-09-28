@@ -50,24 +50,36 @@ def solve_genetic(task, options=None):
                    and weights[j] <= sites[j]["massLimit"]
                    and powers[j] <= sites[j]["powerLimit"] for j in range(m))
 
-    def construct(preferred=None):
-        """Жадно собирает план с приоритетом родительских генов и трудных контейнеров."""
+    def construct(preferred=None, max_nodes=5000):
+        """Собирает допустимый план, пробуя другие площадки при тупике."""
         plan = [-1] * n
         counts, weights, powers = [0] * m, [0] * m, [0] * m
         order = list(range(n))
         rng.shuffle(order)
         order.sort(key=lambda i: (len(allowed[i]),
                                   -containers[i]["weight"] - containers[i]["power"]))
+        options_by_container = []
         for i in order:
             choices = allowed[i][:]
             rng.shuffle(choices)
-            choices.sort(key=lambda j: costs[i][j])
-            if preferred is not None and preferred[i] in choices:
+            if rng.random() < 0.5:
+                choices.sort(key=lambda j: costs[i][j])
+            if preferred is not None and preferred[i] in choices and rng.random() < 0.7:
                 choices.remove(preferred[i])
                 choices.insert(0, preferred[i])
-            if preferred is None and rng.random() < 0.55:
-                rng.shuffle(choices)
-            for j in choices:
+            options_by_container.append(choices)
+
+        visited = 0
+
+        def fill(depth):
+            nonlocal visited
+            if depth == n:
+                return True
+            i = order[depth]
+            for j in options_by_container[depth]:
+                visited += 1
+                if visited > max_nodes:
+                    return False
                 if (counts[j] < sites[j]["places"]
                         and weights[j] + containers[i]["weight"] <= sites[j]["massLimit"]
                         and powers[j] + containers[i]["power"] <= sites[j]["powerLimit"]):
@@ -75,10 +87,15 @@ def solve_genetic(task, options=None):
                     counts[j] += 1
                     weights[j] += containers[i]["weight"]
                     powers[j] += containers[i]["power"]
-                    break
-            if plan[i] == -1:
-                return None
-        return tuple(plan)
+                    if fill(depth + 1):
+                        return True
+                    plan[i] = -1
+                    counts[j] -= 1
+                    weights[j] -= containers[i]["weight"]
+                    powers[j] -= containers[i]["power"]
+            return False
+
+        return tuple(plan) if fill(0) else None
 
     def mutate(plan):
         """Пробует выбранный тип мутации и возвращает допустимый вариант."""
@@ -102,11 +119,11 @@ def solve_genetic(task, options=None):
     current = task["assignment"]
     initial = tuple(site_index.get(current.get(c["id"]), -1) for c in containers)
     population = [initial] if feasible(initial) else []
-    for _ in range(population_size * 12):
+    for _ in range(population_size * 4):
         if len(population) >= population_size:
             break
-        candidate = construct()
-        if candidate is not None:
+        candidate = construct(max_nodes=50_000)
+        if candidate is not None and candidate not in population:
             population.append(candidate)
     if not population:
         return {"method": "genetic", "implemented": True, "status": "not_found",

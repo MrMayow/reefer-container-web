@@ -7,6 +7,17 @@ from model import evaluate, generate_example
 
 
 class GeneticTests(unittest.TestCase):
+    def test_tight_sites_still_create_diverse_population(self):
+        task = generate_example(13, 5, 26)
+        original_cost = evaluate(task)["totalCost"]
+        answer = solve_genetic(task, {"generations": 60, "populationSize": 36,
+                                      "seed": 26, "selectionMethod": "best_half",
+                                      "mutationType": "move", "mutationProbability": 60})
+        self.assertGreater(answer["history"][0]["distinctPlans"], 1)
+        self.assertLess(answer["bestCost"], original_cost)
+        self.assertLess(answer["bestCost"], answer["history"][0]["bestCost"])
+        self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
+
     def test_result_and_each_shown_stage_are_feasible(self):
         task = generate_example(12, 3, 26)
         original_cost = evaluate(task)["totalCost"]

@@ -393,6 +393,10 @@ function renderRun(method) {
     box.append(make("p", "Отбор родителей: " + selection + "."));
     const mutation = run.mutationType === "swap" ? "обмен двух контейнеров" : "перенос контейнера";
     box.append(make("p", run.mutationEnabled ? "Мутация: " + mutation + ". Вероятность: " + run.mutationProbability + "%." : "Мутации выключены."));
+    if (run.mutationEnabled && run.mutationProbability > 0 &&
+        run.history?.every((stage) => stage.mutations === 0)) {
+      box.append(make("p", "За этот запуск допустимых мутаций выбранного типа не получилось. Вероятность задаёт попытку, а не гарантирует изменение плана."));
+    }
   }
   if (hasPlan && calculation?.valid) {
     box.append(make("p", "Текущий план: " + money(calculation.totalCost)));
