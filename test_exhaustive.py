@@ -43,21 +43,12 @@ class ExhaustiveTests(unittest.TestCase):
                 previous_best = stage["bestCost"]
         self.assertEqual(answer["history"][-1]["checkedCount"], answer["checkedCount"])
 
-    def test_limit_does_not_claim_proof(self):
-        task = generate_example(4, 2, 3)
-        answer = solve_exhaustive(task, {"combinationLimit": 1})
-        self.assertEqual(answer["status"], "limit_no_plan")
-        self.assertFalse(answer["provenOptimal"])
-        self.assertFalse(answer["provenInfeasible"])
-        self.assertEqual(answer["checkedCount"], 1)
-        self.assertNotIn("bestAssignment", answer)
-
-    def test_limit_with_plan_is_not_proof(self):
-        task = generate_example(4, 2, 3)
-        answer = solve_exhaustive(task, {"combinationLimit": 15})
-        self.assertEqual(answer["status"], "limit_with_plan")
-        self.assertFalse(answer["provenOptimal"])
-        self.assertEqual(answer["checkedCount"], 15)
+    def test_search_checks_more_than_old_million_limit(self):
+        task = generate_example(20, 2, 3)
+        answer = solve_exhaustive(task)
+        self.assertEqual(answer["status"], "optimal")
+        self.assertEqual(answer["checkedCount"], 2 ** 20)
+        self.assertEqual(answer["checkedCount"], answer["validCount"] + answer["invalidCount"])
         self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
 
     def test_complete_search_proves_infeasible(self):
@@ -68,13 +59,6 @@ class ExhaustiveTests(unittest.TestCase):
         self.assertTrue(answer["provenInfeasible"])
         self.assertEqual(answer["checkedCount"], 1)
         self.assertEqual(answer["invalidCount"], 1)
-
-    def test_invalid_limit_rejected(self):
-        task = generate_example(2, 2, 3)
-        for value in (0, 1.5, True, 5000001):
-            with self.subTest(value=value), self.assertRaises(ValueError):
-                solve_exhaustive(task, {"combinationLimit": value})
-
 
 if __name__ == "__main__":
     unittest.main()

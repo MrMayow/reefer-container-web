@@ -422,7 +422,7 @@ async function runMethod(method) {
   } else if (method === "branch_bound") {
     options = { nodeLimit: Number($("bb-limit").value) };
   } else {
-    options = { combinationLimit: Number($("full-limit").value) };
+    options = {};
   }
   if (method === "branch_bound" && $("bb-start").checked && runs.genetic?.bestAssignment) {
     options.incumbentAssignment = runs.genetic.bestAssignment;
