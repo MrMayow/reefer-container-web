@@ -323,9 +323,10 @@ function renderRun(method) {
   if (!run) return;
   if (run.error) return box.append(make("p", run.error));
   const hasPlan = run.bestCost !== undefined;
-  const title = run.provenOptimal ? "Доказанный минимум: " + money(run.bestCost) :
-    hasPlan ? "Лучший найденный план: " + money(run.bestCost) :
-      run.provenInfeasible ? "Допустимого плана нет" : "План пока не найден";
+  let title = "План пока не найден";
+  if (run.provenOptimal) title = "Доказанный минимум: " + money(run.bestCost);
+  else if (hasPlan) title = "Лучший найденный план: " + money(run.bestCost);
+  else if (run.provenInfeasible) title = "Допустимого плана нет";
   box.append(make("h3", title), make("p", run.message));
   if (method === "genetic") {
     const selection = run.selectionMethod === "best_half" ? "лучшая половина" : "турнир из трёх";
@@ -407,25 +408,29 @@ function renderRun(method) {
 async function runMethod(method) {
   const buttons = { genetic: "ga-run", branch_bound: "bb-run", exhaustive: "full-run" };
   const button = $(buttons[method]);
-  const options = method === "genetic" ? {
-    generations: Number($("ga-generations").value),
-    populationSize: Number($("ga-population").value),
-    seed: Number($("ga-seed").value),
-    selectionMethod: $("ga-selection").value,
-    mutationEnabled: $("ga-mutation-enabled").checked,
-    mutationType: $("ga-mutation-type").value
-  } : method === "branch_bound" ? {
-    nodeLimit: Number($("bb-limit").value)
-  } : { combinationLimit: Number($("full-limit").value) };
+  let options;
+  if (method === "genetic") {
+    options = {
+      generations: Number($("ga-generations").value),
+      populationSize: Number($("ga-population").value),
+      seed: Number($("ga-seed").value),
+      selectionMethod: $("ga-selection").value,
+      mutationEnabled: $("ga-mutation-enabled").checked,
+      mutationType: $("ga-mutation-type").value
+    };
+  } else if (method === "branch_bound") {
+    options = { nodeLimit: Number($("bb-limit").value) };
+  } else {
+    options = { combinationLimit: Number($("full-limit").value) };
+  }
   if (method === "branch_bound" && $("bb-start").checked && runs.genetic?.bestAssignment) {
     options.incumbentAssignment = runs.genetic.bestAssignment;
   }
   const started = revision;
-  const snapshot = JSON.parse(JSON.stringify(task));
   button.disabled = true;
   $(method + "-result").textContent = "Вычисляется…";
   try {
-    const answer = await post("/api/solve", { method, task: snapshot, options });
+    const answer = await post("/api/solve", { method, task, options });
     if (started !== revision) return;
     runs[method] = answer;
     stages[method] = Math.max(0, (answer.history || []).length - 1);

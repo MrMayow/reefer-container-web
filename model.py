@@ -65,6 +65,35 @@ def _number(value, label):
     return value
 
 
+def integer_option(options, name, default, minimum, maximum):
+    value = options.get(name, default)
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise ValueError(f"{name}: требуется целое число от {minimum} до {maximum}.")
+    return value
+
+
+def cost_parts(container, site, mode):
+    """Возвращает стоимость хранения и перевозки одного контейнера."""
+    storage = container["storage"] * site["storageRate"]
+    factor = container["weight"] if mode == "ton_hour" else 1
+    travel = factor * site["travelTime"] * site["travelRate"]
+    return storage, travel
+
+
+def placement_options(task):
+    """Готовит подходящие площадки и стоимость для каждого контейнера."""
+    choices, costs = [], []
+    for container in task["containers"]:
+        choices.append([j for j, site in enumerate(task["sites"])
+                        if container["storage"] + site["travelTime"] <= task["limitHours"]
+                        and site["places"] >= 1
+                        and container["weight"] <= site["massLimit"]
+                        and container["power"] <= site["powerLimit"]])
+        costs.append([sum(cost_parts(container, site, task["tariffMode"]))
+                      for site in task["sites"]])
+    return choices, costs
+
+
 def evaluate(data):
     """Возвращает стоимость и нарушения; недопустимый план не выдаётся за решение."""
     if not isinstance(data, dict):
@@ -129,9 +158,7 @@ def evaluate(data):
             load["count"] += 1
             load["weight"] += container["weight"]
             load["power"] += container["power"]
-            row["storageCost"] = container["storage"] * site["storageRate"]
-            factor = container["weight"] if mode == "ton_hour" else 1
-            row["travelCost"] = factor * site["travelTime"] * site["travelRate"]
+            row["storageCost"], row["travelCost"] = cost_parts(container, site, mode)
             row["cost"] = row["storageCost"] + row["travelCost"]
             load["cost"] += row["cost"]
             total += row["cost"]
@@ -154,3 +181,13 @@ def evaluate(data):
     return {"valid": not issues, "totalCost": total, "issues": issues,
             "loads": list(loads.values()), "rows": rows,
             "provenOptimal": False, "method": "manual"}
+
+
+def verified_assignment(task, plan, cost):
+    """Переводит индексы площадок в имена и проверяет найденный план."""
+    assignment = {container["id"]: task["sites"][plan[i]]["id"]
+                  for i, container in enumerate(task["containers"])}
+    result = evaluate({**task, "assignment": assignment})
+    if not result["valid"] or result["totalCost"] != cost:
+        raise RuntimeError("Ошибка внутренней проверки найденного плана.")
+    return assignment

@@ -2,14 +2,7 @@
 
 import random
 
-from model import evaluate
-
-
-def _option(options, name, default, minimum, maximum):
-    value = options.get(name, default)
-    if type(value) is not int or not minimum <= value <= maximum:
-        raise ValueError(f"{name}: требуется целое число от {minimum} до {maximum}.")
-    return value
+from model import evaluate, integer_option, placement_options, verified_assignment
 
 
 def solve_genetic(task, options=None):
@@ -19,9 +12,9 @@ def solve_genetic(task, options=None):
         options = {}
     if not isinstance(options, dict):
         raise ValueError("Параметры алгоритма должны быть объектом JSON.")
-    generations = _option(options, "generations", 60, 1, 200)
-    population_size = _option(options, "populationSize", 36, 4, 80)
-    seed = _option(options, "seed", 26, 0, 999999)
+    generations = integer_option(options, "generations", 60, 1, 200)
+    population_size = integer_option(options, "populationSize", 36, 4, 80)
+    seed = integer_option(options, "seed", 26, 0, 999999)
     selection_method = options.get("selectionMethod", "tournament")
     if selection_method not in ("tournament", "best_half"):
         raise ValueError("Способ отбора: выберите турнир или лучшую половину.")
@@ -37,18 +30,7 @@ def solve_genetic(task, options=None):
     sites = task["sites"]
     n, m = len(containers), len(sites)
     site_index = {site["id"]: index for index, site in enumerate(sites)}
-    allowed = []
-    costs = []
-    for container in containers:
-        choices = [j for j, site in enumerate(sites)
-                   if container["storage"] + site["travelTime"] <= task["limitHours"]
-                   and site["places"] >= 1
-                   and container["weight"] <= site["massLimit"]
-                   and container["power"] <= site["powerLimit"]]
-        allowed.append(choices)
-        factor = container["weight"] if task["tariffMode"] == "ton_hour" else 1
-        costs.append([container["storage"] * site["storageRate"]
-                      + factor * site["travelTime"] * site["travelRate"] for site in sites])
+    allowed, costs = placement_options(task)
 
     def plan_cost(plan):
         return sum(costs[i][j] for i, j in enumerate(plan))
@@ -179,13 +161,11 @@ def solve_genetic(task, options=None):
             best = generation_best
         record(generation, crossovers, mutations, repairs)
 
-    assignment = {container["id"]: sites[best[i]]["id"] for i, container in enumerate(containers)}
-    final_check = evaluate({**task, "assignment": assignment})
-    if not final_check["valid"] or final_check["totalCost"] != plan_cost(best):
-        raise RuntimeError("Ошибка внутренней проверки генетического плана.")
+    best_cost = plan_cost(best)
+    assignment = verified_assignment(task, best, best_cost)
     return {"method": "genetic", "implemented": True, "status": "found",
             "provenOptimal": False, "message": "Найден допустимый план; оптимальность не доказана.",
-            "bestCost": final_check["totalCost"], "bestAssignment": assignment,
+            "bestCost": best_cost, "bestAssignment": assignment,
             "history": history, "generationsRun": generations,
             "populationSize": population_size, "seed": seed,
             "selectionMethod": selection_method,

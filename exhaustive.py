@@ -2,7 +2,7 @@
 
 from itertools import product
 
-from model import evaluate
+from model import evaluate, integer_option, placement_options, verified_assignment
 
 
 def solve_exhaustive(task, options=None):
@@ -12,22 +12,14 @@ def solve_exhaustive(task, options=None):
         options = {}
     if not isinstance(options, dict):
         raise ValueError("Параметры метода должны быть объектом JSON.")
-    combination_limit = options.get("combinationLimit", 1_000_000)
-    if type(combination_limit) is not int or not 1 <= combination_limit <= 5_000_000:
-        raise ValueError("combinationLimit: требуется целое число от 1 до 5000000.")
+    combination_limit = integer_option(options, "combinationLimit", 1_000_000, 1, 5_000_000)
 
     containers = task["containers"]
     sites = task["sites"]
     n, m = len(containers), len(sites)
     total = m ** n
-    limit_hours = task["limitHours"]
-    ton_hour = task["tariffMode"] == "ton_hour"
-    allowed = [[container["storage"] + site["travelTime"] <= limit_hours
-                for site in sites] for container in containers]
-    costs = [[container["storage"] * site["storageRate"]
-              + (container["weight"] if ton_hour else 1)
-              * site["travelTime"] * site["travelRate"]
-              for site in sites] for container in containers]
+    choices, costs = placement_options(task)
+    allowed = [set(row) for row in choices]
 
     checked_count = valid_count = 0
     best_cost = None
@@ -64,7 +56,7 @@ def solve_exhaustive(task, options=None):
             counts[j] += 1
             weights[j] += container["weight"]
             powers[j] += container["power"]
-            if (not allowed[i][j] or counts[j] > site["places"]
+            if (j not in allowed[i] or counts[j] > site["places"]
                     or weights[j] > site["massLimit"]
                     or powers[j] > site["powerLimit"]):
                 feasible = False
@@ -101,11 +93,7 @@ def solve_exhaustive(task, options=None):
               "checkedCount": checked_count, "validCount": valid_count,
               "invalidCount": checked_count - valid_count, "history": history}
     if best is not None:
-        assignment = {container["id"]: sites[best[i]]["id"]
-                      for i, container in enumerate(containers)}
-        verification = evaluate({**task, "assignment": assignment})
-        if not verification["valid"] or verification["totalCost"] != best_cost:
-            raise RuntimeError("Ошибка внутренней проверки плана полного перебора.")
+        assignment = verified_assignment(task, best, best_cost)
         answer["bestCost"] = best_cost
         answer["bestAssignment"] = assignment
     return answer

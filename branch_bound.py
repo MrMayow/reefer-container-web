@@ -1,6 +1,6 @@
 """Точный метод ветвей и границ с ограничением числа просмотренных узлов."""
 
-from model import evaluate
+from model import evaluate, integer_option, placement_options, verified_assignment
 
 
 def solve_branch_bound(task, options=None):
@@ -10,27 +10,14 @@ def solve_branch_bound(task, options=None):
         options = {}
     if not isinstance(options, dict):
         raise ValueError("Параметры метода должны быть объектом JSON.")
-    node_limit = options.get("nodeLimit", 100_000)
-    if type(node_limit) is not int or not 1 <= node_limit <= 1_000_000:
-        raise ValueError("nodeLimit: требуется целое число от 1 до 1000000.")
+    node_limit = integer_option(options, "nodeLimit", 100_000, 1, 1_000_000)
 
     containers = task["containers"]
     sites = task["sites"]
     n, m = len(containers), len(sites)
     site_index = {site["id"]: j for j, site in enumerate(sites)}
-    costs = []
-    choices = []
-    for container in containers:
-        factor = container["weight"] if task["tariffMode"] == "ton_hour" else 1
-        row = [container["storage"] * site["storageRate"]
-               + factor * site["travelTime"] * site["travelRate"] for site in sites]
-        costs.append(row)
-        choices.append(sorted((j for j, site in enumerate(sites)
-                               if container["storage"] + site["travelTime"] <= task["limitHours"]
-                               and site["places"] >= 1
-                               and container["weight"] <= site["massLimit"]
-                               and container["power"] <= site["powerLimit"]),
-                              key=lambda j: row[j]))
+    choices, costs = placement_options(task)
+    choices = [sorted(row, key=lambda j: costs[i][j]) for i, row in enumerate(choices)]
 
     # Сначала контейнеры с меньшим числом вариантов и большей нагрузкой.
     order = sorted(range(n), key=lambda i: (len(choices[i]),
@@ -142,14 +129,7 @@ def solve_branch_bound(task, options=None):
     if not impossible:
         search(0, 0)
 
-    if best is not None:
-        assignment = {container["id"]: sites[best[i]]["id"]
-                      for i, container in enumerate(containers)}
-        verification = evaluate({**task, "assignment": assignment})
-        if not verification["valid"] or verification["totalCost"] != best_cost:
-            raise RuntimeError("Ошибка внутренней проверки точного плана.")
-    else:
-        assignment = None
+    assignment = verified_assignment(task, best, best_cost) if best is not None else None
 
     if stopped:
         status = "limit_with_plan" if best is not None else "limit_no_plan"

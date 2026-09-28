@@ -15,6 +15,8 @@ from exhaustive import solve_exhaustive
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
+SOLVERS = {"genetic": solve_genetic, "branch_bound": solve_branch_bound,
+           "exhaustive": solve_exhaustive}
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -72,14 +74,11 @@ class Handler(BaseHTTPRequestHandler):
                 result = evaluate(data)
             elif self.path == "/api/generate":
                 result = generate_example(data.get("containerCount"), data.get("siteCount"), data.get("seed"))
-            elif data.get("method") == "genetic":
-                result = solve_genetic(data.get("task"), data.get("options"))
-            elif data.get("method") == "branch_bound":
-                result = solve_branch_bound(data.get("task"), data.get("options"))
-            elif data.get("method") == "exhaustive":
-                result = solve_exhaustive(data.get("task"), data.get("options"))
             else:
-                raise ValueError("Неизвестный метод решения.")
+                method = data.get("method")
+                if not isinstance(method, str) or method not in SOLVERS:
+                    raise ValueError("Неизвестный метод решения.")
+                result = SOLVERS[method](data.get("task"), data.get("options"))
             self.send_json(result)
         except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             self.send_json({"error": str(exc)}, 400)
