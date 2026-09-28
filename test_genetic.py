@@ -39,6 +39,31 @@ class GeneticTests(unittest.TestCase):
                            "seed": 42, "selectionMethod": method}
                 self.assertEqual(solve_genetic(task, options), solve_genetic(task, options))
 
+    def test_mutation_can_be_disabled_or_limited_to_one_type(self):
+        task = generate_example(1, 2, 3)
+        container = task["containers"][0]
+        task["sites"][1]["massLimit"] = container["weight"]
+        task["sites"][1]["powerLimit"] = container["power"]
+        task["limitHours"] = 100
+        options = {"generations": 8, "populationSize": 8, "seed": 7}
+
+        disabled = solve_genetic(task, {**options, "mutationEnabled": False})
+        moved = solve_genetic(task, {**options, "mutationType": "move"})
+        swapped = solve_genetic(task, {**options, "mutationType": "swap"})
+        self.assertFalse(disabled["mutationEnabled"])
+        self.assertEqual(disabled["mutationType"], "swap")
+        self.assertTrue(moved["mutationEnabled"])
+        self.assertEqual(moved["mutationType"], "move")
+        self.assertEqual(swapped["mutationType"], "swap")
+        self.assertEqual(sum(stage["mutations"] for stage in disabled["history"]), 0)
+        self.assertGreater(sum(stage["mutations"] for stage in moved["history"]), 0)
+        self.assertEqual(sum(stage["mutations"] for stage in swapped["history"]), 0)
+
+        many = generate_example(12, 3, 26)
+        swapped = solve_genetic(many, {**options, "mutationType": "swap"})
+        self.assertGreater(sum(stage["mutations"] for stage in swapped["history"]), 0)
+        self.assertTrue(evaluate({**many, "assignment": swapped["bestAssignment"]})["valid"])
+
     def test_no_plan_found_is_not_a_proof(self):
         task = generate_example(2, 1, 3)
         task["sites"][0]["places"] = 0
@@ -50,7 +75,8 @@ class GeneticTests(unittest.TestCase):
     def test_fractional_or_excessive_settings_are_rejected(self):
         task = generate_example(2, 1, 3)
         for options in ({"generations": 1.5}, {"populationSize": 1000},
-                        {"seed": -1}, {"selectionMethod": "unknown"}):
+                        {"seed": -1}, {"selectionMethod": "unknown"},
+                        {"mutationEnabled": 1}, {"mutationType": "unknown"}):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 solve_genetic(task, options)
 

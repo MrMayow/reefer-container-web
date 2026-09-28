@@ -25,6 +25,12 @@ def solve_genetic(task, options=None):
     selection_method = options.get("selectionMethod", "tournament")
     if selection_method not in ("tournament", "best_half"):
         raise ValueError("Способ отбора: выберите турнир или лучшую половину.")
+    mutation_enabled = options.get("mutationEnabled", True)
+    if type(mutation_enabled) is not bool:
+        raise ValueError("Включение мутаций должно быть логическим значением.")
+    mutation_type = options.get("mutationType", "swap")
+    if mutation_type not in ("move", "swap"):
+        raise ValueError("Тип мутации: выберите перенос или обмен.")
     rng = random.Random(seed)
 
     containers = task["containers"]
@@ -92,11 +98,11 @@ def solve_genetic(task, options=None):
         return tuple(plan)
 
     def mutate(plan):
-        """Перенос или обмен; возвращает только допустимый вариант."""
+        """Пробует выбранный тип мутации и возвращает допустимый вариант."""
         for _ in range(12):
             changed = list(plan)
             i = rng.randrange(n)
-            if rng.random() < 0.5:
+            if mutation_type == "move":
                 j = rng.randrange(m)
                 if j == changed[i]:
                     continue
@@ -123,7 +129,8 @@ def solve_genetic(task, options=None):
         return {"method": "genetic", "implemented": True, "status": "not_found",
                 "provenOptimal": False, "message": "Допустимый план не найден. Это не доказывает, что его нет.",
                 "history": [], "generationsRun": 0, "populationSize": population_size,
-                "seed": seed, "selectionMethod": selection_method}
+                "seed": seed, "selectionMethod": selection_method,
+                "mutationEnabled": mutation_enabled, "mutationType": mutation_type}
     while len(population) < population_size:
         population.append(population[rng.randrange(len(population))])
 
@@ -160,7 +167,7 @@ def solve_genetic(task, options=None):
                     repairs += 1
                 else:
                     child = min((first, second), key=plan_cost)
-            if rng.random() < 0.6:
+            if mutation_enabled and rng.random() < 0.6:
                 changed = mutate(child)
                 if changed != child:
                     mutations += 1
@@ -181,4 +188,5 @@ def solve_genetic(task, options=None):
             "bestCost": final_check["totalCost"], "bestAssignment": assignment,
             "history": history, "generationsRun": generations,
             "populationSize": population_size, "seed": seed,
-            "selectionMethod": selection_method}
+            "selectionMethod": selection_method,
+            "mutationEnabled": mutation_enabled, "mutationType": mutation_type}

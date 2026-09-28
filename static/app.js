@@ -330,6 +330,8 @@ function renderRun(method) {
   if (method === "genetic") {
     const selection = run.selectionMethod === "best_half" ? "лучшая половина" : "турнир из трёх";
     box.append(make("p", "Отбор родителей: " + selection + "."));
+    const mutation = run.mutationType === "swap" ? "обмен двух контейнеров" : "перенос контейнера";
+    box.append(make("p", run.mutationEnabled ? "Мутация: " + mutation + " (60%)." : "Мутации выключены."));
   }
   if (hasPlan && calculation?.valid) {
     box.append(make("p", "Текущий план: " + money(calculation.totalCost)));
@@ -409,7 +411,9 @@ async function runMethod(method) {
     generations: Number($("ga-generations").value),
     populationSize: Number($("ga-population").value),
     seed: Number($("ga-seed").value),
-    selectionMethod: $("ga-selection").value
+    selectionMethod: $("ga-selection").value,
+    mutationEnabled: $("ga-mutation-enabled").checked,
+    mutationType: $("ga-mutation-type").value
   } : method === "branch_bound" ? {
     nodeLimit: Number($("bb-limit").value)
   } : { combinationLimit: Number($("full-limit").value) };
@@ -492,6 +496,10 @@ document.querySelectorAll("[data-method]").forEach((button) => {
   button.onclick = () => showMethod(button.dataset.method);
 });
 $("ga-run").onclick = () => runMethod("genetic");
+$("ga-mutation-enabled").onchange = (event) => {
+  $("ga-mutation-type").disabled = !event.target.checked;
+};
+$("ga-mutation-type").disabled = !$("ga-mutation-enabled").checked;
 $("bb-run").onclick = () => runMethod("branch_bound");
 $("full-run").onclick = () => runMethod("exhaustive");
 
