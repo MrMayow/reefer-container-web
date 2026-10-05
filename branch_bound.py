@@ -4,7 +4,7 @@ from model import evaluate, integer_option, placement_options, verified_assignme
 
 
 def solve_branch_bound(task, options=None):
-    """Возвращает доказанный оптимум только после завершения всего поиска."""
+    """Подтверждает минимальную стоимость только после завершения всего поиска."""
     checked = evaluate(task)
     if options is None:
         options = {}
@@ -133,7 +133,7 @@ def solve_branch_bound(task, options=None):
 
     if stopped:
         status = "limit_with_plan" if best is not None else "limit_no_plan"
-        message = ("Достигнут лимит узлов. Показан лучший найденный допустимый план; оптимальность не доказана."
+        message = ("Достигнут лимит узлов. Показан лучший найденный допустимый план; поиск не завершён."
                    if best is not None else
                    "Достигнут лимит узлов. Допустимый план пока не найден; отсутствие решения не доказано.")
     elif best is None:
@@ -141,8 +141,8 @@ def solve_branch_bound(task, options=None):
         message = "Все варианты отсечены или проверены: допустимого размещения нет."
     else:
         status = "optimal"
-        message = "Все оставшиеся ветви проверены или отсечены: глобальный оптимум доказан."
-    record(message, 0)
+        message = ""
+    record(message or "Поиск завершён.", 0)
     answer = {"method": "branch_bound", "implemented": True, "status": status,
               "message": message, "provenOptimal": status == "optimal",
               "provenInfeasible": status == "infeasible",

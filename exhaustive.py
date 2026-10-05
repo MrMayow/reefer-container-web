@@ -125,7 +125,7 @@ def solve_exhaustive(task, options=None, progress=None):
 
     if best is not None:
         status = "optimal"
-        message = "Все назначения проверены: глобальный оптимум доказан."
+        message = "Все назначения проверены."
     else:
         status = "infeasible"
         message = "Все назначения проверены: допустимого размещения нет."

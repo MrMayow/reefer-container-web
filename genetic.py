@@ -184,7 +184,7 @@ def solve_genetic(task, options=None):
     best_cost = plan_cost(best)
     assignment = verified_assignment(task, best, best_cost)
     return {"method": "genetic", "implemented": True, "status": "found",
-            "provenOptimal": False, "message": "Найден допустимый план; оптимальность не доказана.",
+            "provenOptimal": False, "message": "Найден допустимый план. Минимальная стоимость не подтверждена.",
             "bestCost": best_cost, "bestAssignment": assignment,
             "history": history, "generationsRun": generations,
             "populationSize": population_size, "seed": seed,

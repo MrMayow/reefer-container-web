@@ -387,7 +387,8 @@ function renderRun(method) {
   if (run.provenOptimal) title = "Доказанный минимум: " + money(run.bestCost);
   else if (hasPlan) title = "Лучший найденный план: " + money(run.bestCost);
   else if (run.provenInfeasible) title = "Допустимого плана нет";
-  box.append(make("h3", title), make("p", run.message));
+  box.append(make("h3", title));
+  if (run.message) box.append(make("p", run.message));
   if (method === "genetic") {
     const selection = run.selectionMethod === "best_half" ? "лучшая половина" : "турнир из трёх";
     box.append(make("p", "Отбор родителей: " + selection + "."));
