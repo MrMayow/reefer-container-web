@@ -1,6 +1,8 @@
 """Проверки генетического поиска и его истории."""
 
+import random
 import unittest
+from unittest.mock import Mock, patch
 
 from genetic import solve_genetic
 from model import evaluate, generate_example
@@ -87,6 +89,36 @@ class GeneticTests(unittest.TestCase):
                 options = {"generations": 8, "populationSize": 12,
                            "seed": 42, "selectionMethod": method}
                 self.assertEqual(solve_genetic(task, options), solve_genetic(task, options))
+
+    def test_fill_skips_used_parent_even_when_its_child_was_a_duplicate(self):
+        task = generate_example(2, 2, 26)
+        for container in task["containers"]:
+            container.update(weight=1, power=1, storage=1)
+        for j, site in enumerate(task["sites"]):
+            site.update(places=2, massLimit=10, powerLimit=10,
+                        storageRate=j + 1, travelTime=0, travelRate=0)
+        task["assignment"] = {container["id"]: "A" for container in task["containers"]}
+        rng = Mock(wraps=random.Random(26))
+        parent_draws = []
+
+        def tournament(pool, count):
+            ordered = sorted(pool, key=lambda plan: (sum(plan), plan))
+            offset = len(parent_draws) % 2
+            participants = ordered[offset:offset + count]
+            parent_draws.append(participants[0])
+            rng.random.return_value = 0.0  # Каждый потомок повторяет первого родителя.
+            return participants
+
+        rng.sample.side_effect = tournament
+        with patch("genetic.random.Random", return_value=rng):
+            answer = solve_genetic(task, {"generations": 1, "populationSize": 4,
+                                          "mutationEnabled": False})
+        self.assertEqual(answer["history"][0]["populationCount"], 4)
+        last = answer["history"][-1]
+        self.assertEqual(last["parentsUsed"], 2)
+        self.assertEqual(last["carriedOver"], 2)
+        self.assertEqual(last["populationCount"], 3)
+        self.assertEqual(last["distinctPlans"], 3)
 
     def test_mutation_can_be_disabled_or_limited_to_one_type(self):
         task = generate_example(1, 2, 3)

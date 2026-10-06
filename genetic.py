@@ -134,13 +134,16 @@ def solve_genetic(task, options=None):
                 "mutationProbability": mutation_probability}
     best = min(population, key=plan_cost)
     history = []
+    used_parents = set()
+    carried_over = 0
 
     def record(generation, crossovers, mutations, repairs):
         history.append({"generation": generation, "bestCost": plan_cost(best),
                         "bestChromosome": list(best), "distinctPlans": len(set(population)),
                         "populationCount": len(population),
                         "crossovers": crossovers, "mutations": mutations,
-                        "repairs": repairs})
+                        "repairs": repairs, "parentsUsed": len(used_parents),
+                        "carriedOver": carried_over})
 
     record(0, 0, 0, 0)
 
@@ -153,11 +156,14 @@ def solve_genetic(task, options=None):
         parent_pool = (sorted(population, key=plan_cost)[:max(1, len(population) // 2)]
                        if selection_method == "best_half" else population)
         new_population = [best]  # Элитизм: лучший план никогда не теряется.
+        used_parents = set()
+        carried_over = 0
         crossovers = mutations = repairs = 0
         for _ in range(population_size * 4):
             if len(new_population) >= population_size:
                 break
             first, second = select(parent_pool), select(parent_pool)
+            used_parents.update((first, second))
             preferred = tuple(first[i] if rng.random() < 0.5 else second[i] for i in range(n))
             crossovers += 1
             if feasible(preferred):
@@ -176,14 +182,15 @@ def solve_genetic(task, options=None):
                     child = changed
             if child not in new_population:
                 new_population.append(child)
-        # Сохраняем прежние разные планы и пробуем добавить новые размещения.
+        # Добираем особей, которые не выбирались родителями в этом поколении.
         for candidate in sorted(population, key=plan_cost):
             if len(new_population) >= population_size:
                 break
-            if candidate not in new_population:
+            if candidate not in used_parents and candidate not in new_population:
                 new_population.append(candidate)
+                carried_over += 1
         while len(new_population) < population_size:
-            candidate = construct(excluded=new_population)
+            candidate = construct(excluded=set(new_population) | used_parents)
             if candidate is None:
                 break
             new_population.append(candidate)
