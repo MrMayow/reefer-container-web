@@ -434,7 +434,7 @@ function renderRun(method) {
 
   const stats = make("div", "", "metrics");
   if (method === "genetic") {
-    stats.append(metric("Поколение", stage.generation), metric("Разных планов", stage.distinctPlans),
+    stats.append(metric("Поколение", stage.generation), metric("Разных планов", stage.distinctPlans + " / " + run.populationSize),
       metric("Скрещивания", stage.crossovers), metric("Мутации", stage.mutations),
       metric("Исправления", stage.repairs));
   } else if (method === "branch_bound") {

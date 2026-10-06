@@ -50,8 +50,8 @@ def solve_genetic(task, options=None):
                    and weights[j] <= sites[j]["massLimit"]
                    and powers[j] <= sites[j]["powerLimit"] for j in range(m))
 
-    def construct(preferred=None, max_nodes=5000):
-        """Собирает допустимый план, пробуя другие площадки при тупике."""
+    def construct(preferred=None, max_nodes=5000, excluded=()):
+        """Собирает допустимый план, пропуская уже добавленные размещения."""
         plan = [-1] * n
         counts, weights, powers = [0] * m, [0] * m, [0] * m
         order = list(range(n))
@@ -74,12 +74,12 @@ def solve_genetic(task, options=None):
         def fill(depth):
             nonlocal visited
             if depth == n:
-                return True
+                return tuple(plan) not in excluded
             i = order[depth]
             for j in options_by_container[depth]:
-                visited += 1
-                if visited > max_nodes:
+                if visited >= max_nodes:
                     return False
+                visited += 1
                 if (counts[j] < sites[j]["places"]
                         and weights[j] + containers[i]["weight"] <= sites[j]["massLimit"]
                         and powers[j] + containers[i]["power"] <= sites[j]["powerLimit"]):
@@ -132,15 +132,13 @@ def solve_genetic(task, options=None):
                 "seed": seed, "selectionMethod": selection_method,
                 "mutationEnabled": mutation_enabled, "mutationType": mutation_type,
                 "mutationProbability": mutation_probability}
-    while len(population) < population_size:
-        population.append(population[rng.randrange(len(population))])
-
     best = min(population, key=plan_cost)
     history = []
 
     def record(generation, crossovers, mutations, repairs):
         history.append({"generation": generation, "bestCost": plan_cost(best),
                         "bestChromosome": list(best), "distinctPlans": len(set(population)),
+                        "populationCount": len(population),
                         "crossovers": crossovers, "mutations": mutations,
                         "repairs": repairs})
 
@@ -149,32 +147,46 @@ def solve_genetic(task, options=None):
     def select(parent_pool):
         if selection_method == "best_half":
             return rng.choice(parent_pool)
-        return min(rng.sample(parent_pool, 3), key=plan_cost)
+        return min(rng.sample(parent_pool, min(3, len(parent_pool))), key=plan_cost)
 
     for generation in range(1, generations + 1):
-        parent_pool = (sorted(population, key=plan_cost)[:population_size // 2]
+        parent_pool = (sorted(population, key=plan_cost)[:max(1, len(population) // 2)]
                        if selection_method == "best_half" else population)
         new_population = [best]  # Элитизм: лучший план никогда не теряется.
         crossovers = mutations = repairs = 0
-        while len(new_population) < population_size:
+        for _ in range(population_size * 4):
+            if len(new_population) >= population_size:
+                break
             first, second = select(parent_pool), select(parent_pool)
             preferred = tuple(first[i] if rng.random() < 0.5 else second[i] for i in range(n))
             crossovers += 1
             if feasible(preferred):
                 child = preferred
             else:
-                child = construct(preferred)
+                child = construct(preferred, excluded=new_population)
                 if child is not None:
                     repairs += 1
                 else:
-                    child = min((first, second), key=plan_cost)
+                    continue
             if (mutation_enabled and mutation_probability > 0
                     and rng.random() < mutation_probability / 100):
                 changed = mutate(child)
                 if changed != child:
                     mutations += 1
                     child = changed
-            new_population.append(child)
+            if child not in new_population:
+                new_population.append(child)
+        # Сохраняем прежние разные планы и пробуем добавить новые размещения.
+        for candidate in sorted(population, key=plan_cost):
+            if len(new_population) >= population_size:
+                break
+            if candidate not in new_population:
+                new_population.append(candidate)
+        while len(new_population) < population_size:
+            candidate = construct(excluded=new_population)
+            if candidate is None:
+                break
+            new_population.append(candidate)
         population = new_population
         generation_best = min(population, key=plan_cost)
         if plan_cost(generation_best) < plan_cost(best):

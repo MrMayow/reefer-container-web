@@ -32,6 +32,7 @@ class GeneticTests(unittest.TestCase):
                 self.assertLessEqual(answer["bestCost"], original_cost)
                 costs = []
                 for record in answer["history"]:
+                    self.assertEqual(record["populationCount"], record["distinctPlans"])
                     assignment = {container["id"]: task["sites"][record["bestChromosome"][i]]["id"]
                                   for i, container in enumerate(task["containers"])}
                     checked = evaluate({**task, "assignment": assignment})
@@ -41,6 +42,43 @@ class GeneticTests(unittest.TestCase):
                 self.assertEqual(costs, sorted(costs, reverse=True))
                 self.assertEqual(costs[-1], answer["bestCost"])
                 self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
+
+    def test_single_feasible_plan_is_not_copied_to_fill_population(self):
+        task = generate_example(3, 1, 26)
+        for selection in ("tournament", "best_half"):
+            with self.subTest(selection=selection):
+                answer = solve_genetic(task, {"generations": 4, "populationSize": 8,
+                                              "selectionMethod": selection})
+                self.assertEqual(len(answer["history"]), 5)
+                self.assertTrue(all(stage["populationCount"] == stage["distinctPlans"] == 1
+                                    for stage in answer["history"]))
+                self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
+
+    def test_repair_and_mutation_keep_generations_unique(self):
+        task = generate_example(13, 5, 26)
+        for selection in ("tournament", "best_half"):
+            with self.subTest(selection=selection):
+                answer = solve_genetic(task, {"generations": 8, "populationSize": 24,
+                                              "selectionMethod": selection,
+                                              "mutationProbability": 100})
+                self.assertGreater(sum(stage["repairs"] for stage in answer["history"]), 0)
+                self.assertGreater(sum(stage["mutations"] for stage in answer["history"]), 0)
+                self.assertTrue(all(stage["populationCount"] == stage["distinctPlans"]
+                                    for stage in answer["history"]))
+
+    def test_two_feasible_plans_work_with_both_selection_methods(self):
+        task = generate_example(1, 2, 3)
+        container = task["containers"][0]
+        task["sites"][1]["massLimit"] = container["weight"]
+        task["sites"][1]["powerLimit"] = container["power"]
+        task["limitHours"] = 100
+        for selection in ("tournament", "best_half"):
+            with self.subTest(selection=selection):
+                answer = solve_genetic(task, {"generations": 4, "populationSize": 8,
+                                              "selectionMethod": selection, "mutationType": "move",
+                                              "mutationProbability": 100})
+                self.assertTrue(all(stage["populationCount"] == stage["distinctPlans"] == 2
+                                    for stage in answer["history"]))
 
     def test_same_seed_repeats_search(self):
         task = generate_example(10, 3, 9)
