@@ -177,6 +177,7 @@ def solve_genetic(task, options=None):
                         "crossovers": crossovers, "mutations": mutations,
                         "repairs": repairs, "parentsUsed": len(used_parents),
                         "carriedOver": carried_over,
+                        "immediateReserves": sum(event["kind"] == "reserve" for event in events),
                         "population": [plan_id(plan) for plan in population],
                         "parentPool": [plan_id(plan) for plan in parent_pool],
                         "discarded": [plan_id(plan) for plan in retired_now],
@@ -191,8 +192,10 @@ def solve_genetic(task, options=None):
         return min(participants, key=plan_cost), participants
 
     for generation in range(1, generations + 1):
-        parent_pool = (sorted(population, key=plan_cost)[:max(1, len(population) // 2)]
+        ordered_population = sorted(population, key=plan_cost)
+        parent_pool = (ordered_population[:max(1, len(population) // 2)]
                        if selection_method == "best_half" else population)
+        available_parents = parent_pool[:]
         new_population = [best]  # Элитизм: лучший план никогда не теряется.
         events = [{"kind": "elite", "result": plan_id(best), "status": "accepted"}]
         used_parents = set()
@@ -201,8 +204,8 @@ def solve_genetic(task, options=None):
         for _ in range(population_size * 4):
             if len(new_population) >= population_size:
                 break
-            first, first_group = select(parent_pool)
-            second, second_group = select(parent_pool)
+            first, first_group = select(available_parents)
+            second, second_group = select(available_parents)
             used_parents.update((first, second))
             preferred = tuple(first[i] if rng.random() < 0.5 else second[i] for i in range(n))
             crossovers += 1
@@ -219,6 +222,17 @@ def solve_genetic(task, options=None):
                 if child is not None:
                     repairs += 1
                 else:
+                    event["reserve"] = None
+                    for candidate in ordered_population:
+                        if candidate not in used_parents and candidate not in new_population:
+                            new_population.append(candidate)
+                            carried_over += 1
+                            event["reserve"] = plan_id(candidate)
+                            events.append({"kind": "reserve", "result": plan_id(candidate), "status": "accepted"})
+                            # Резерв больше не выбирается родителем в этом поколении.
+                            if candidate in available_parents:
+                                available_parents.remove(candidate)
+                            break
                     continue
             event["result"] = plan_id(child)
             if child in discarded:
@@ -242,7 +256,7 @@ def solve_genetic(task, options=None):
                 new_population.append(child)
                 event["status"] = "accepted"
         # Добираем особей, которые не выбирались родителями в этом поколении.
-        for candidate in sorted(population, key=plan_cost):
+        for candidate in ordered_population:
             if len(new_population) >= population_size:
                 break
             if candidate not in used_parents and candidate not in new_population:

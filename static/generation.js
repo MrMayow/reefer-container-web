@@ -47,6 +47,7 @@ function renderGenerationDetails(box, run, index) {
   box.append(controls, make("p", index === 0 ? "Создание начальной популяции. Родители ещё не выбирались." :
     run.selectionMethod === "best_half" ? "Прежняя популяция отсортирована по стоимости. Родители выбираются из лучшей половины." :
       "Для каждого родителя проводится отдельный турнир: выбираются до трёх разных участников, побеждает самый дешёвый."));
+  if (index) box.append(make("p", "После неудачного исправления сразу берётся самый дешёвый ещё не добавленный план прежней популяции, который не выбирался родителем. Он исключается из дальнейшего выбора родителей этого поколения."));
   box.append(make("p", "Позиции хромосомы соответствуют контейнерам: " + task.containers.map((c) => c.id).join(", ") +
     ". Значение — площадка. Номер плана сохраняется во всём запуске."));
 
@@ -60,11 +61,13 @@ function renderGenerationDetails(box, run, index) {
     table.append(head);
     const eligible = new Set(stage.parentPool);
     const used = new Set(stage.events.flatMap((event) => event.parents || []));
+    const reserved = new Set(stage.events.filter((event) => event.kind === "reserve").map((event) => event.result));
     [...ids].sort((a, b) => run.plans[a].cost - run.plans[b].cost).forEach((id) => {
       const row = make("tr");
       row.append(make("td", formatPlan(id)), make("td", price(id)),
         make("td", run.plans[id].chromosome.map((j) => task.sites[j].id).join(" ")));
-      if (roles) row.append(make("td", used.has(id) ? "Выбран родителем" : eligible.has(id) ? "Доступен для выбора" : "Вне лучшей половины"));
+      if (roles) row.append(make("td", reserved.has(id) ? "Добавлен из резерва; исключён из родителей" :
+        used.has(id) ? "Выбран родителем" : eligible.has(id) ? "Доступен для выбора" : "Вне лучшей половины"));
       table.append(row);
     });
     scroll.append(table);
@@ -74,7 +77,8 @@ function renderGenerationDetails(box, run, index) {
   if (before.length) populationTable("Популяция до отбора", before, true);
 
   const kinds = { manual: "Текущий ручной план", initial: "Начальный поиск", elite: "Сохранение лучшего плана",
-    crossover: "Скрещивание", carry: "Добор из прежней популяции", generate: "Поиск нового плана" };
+    crossover: "Скрещивание", reserve: "Резерв после неудачного исправления",
+    carry: "Добор из прежней популяции", generate: "Поиск нового плана" };
   const statuses = { accepted: "Добавлен в популяцию", duplicate: "Отклонён: повтор в новом поколении",
     retired: "Отклонён: ранее выбывший план", not_found: "Подходящий план не найден" };
   box.append(make("h4", "Действия поколения"));
@@ -113,6 +117,11 @@ function renderGenerationDetails(box, run, index) {
         columns.push({ label: "После исправления", id: event.repaired, compare: event.crossed });
         preview.append(make("p", "Исправление: " + fmt.format(event.repairNodes) + " проверок назначений." +
           (event.repairLimited ? " Достигнут предел 5 000 проверок." : "") + " Ранее выбывшие планы и повторы нового поколения исключены из поиска."));
+        if ("reserve" in event) {
+          preview.append(make("p", event.reserve === null ? "Подходящего плана в резерве нет. Будет выбрана следующая пара родителей." :
+            "Исправление не удалось. В новое поколение сразу добавлен " + formatPlan(event.reserve) + " из резерва; он больше не выбирается родителем в этом поколении."));
+          if (event.reserve !== null) columns.push({ label: "Из резерва", id: event.reserve });
+        }
       } else preview.append(make("p", "Потомок после скрещивания допустим, исправление не требуется."));
       if (event.mutation) {
         const messages = { disabled: "Мутации выключены.", skipped: "В этой попытке мутация не выполнялась.",
@@ -125,6 +134,7 @@ function renderGenerationDetails(box, run, index) {
     if (event.nodes !== undefined) preview.append(make("p", "Проверок назначений: " + fmt.format(event.nodes) +
       (event.limited ? ". Поиск остановлен по пределу проверок." : ". Поиск этой попытки завершён.")));
     if (event.kind === "carry") preview.append(make("p", "Этот план не выбирался родителем и ещё не добавлен в новое поколение."));
+    if (event.kind === "reserve") preview.append(make("p", "Предыдущее исправление не удалось. Взята самая дешёвая особь прежней популяции среди тех, которые ещё не добавлены и не выбирались родителями. Она исключена из дальнейшего выбора родителей этого поколения."));
     if (event.kind === "elite") preview.append(make("p", "Лучший известный план сохранён по правилу элитизма."));
     if (!columns.length) return;
     const scroll = make("div", "", "scroll");

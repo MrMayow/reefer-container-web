@@ -84,6 +84,55 @@ class GeneticTests(unittest.TestCase):
                 self.assertTrue(all(stage["populationCount"] == stage["distinctPlans"] == 2
                                     for stage in answer["history"]))
 
+    def test_failed_repair_immediately_takes_cheapest_unused_reserve(self):
+        task = generate_example(13, 5, 26)
+        unavailable = 0
+        for selection in ("tournament", "best_half"):
+            with self.subTest(selection=selection):
+                answer = solve_genetic(task, {"generations": 8, "populationSize": 24,
+                                              "selectionMethod": selection, "mutationProbability": 100})
+                discarded = set()
+                reserves_from_pool = 0
+                for before, stage in zip(answer["history"], answer["history"][1:]):
+                    ordered = sorted(before["population"], key=lambda i: answer["plans"][i]["cost"])
+                    used, reserved, added = set(), set(), []
+                    for i, event in enumerate(stage["events"]):
+                        if event["kind"] == "crossover":
+                            self.assertFalse(reserved.intersection(event["parents"]))
+                            for group in event["participants"]:
+                                self.assertFalse(reserved.intersection(group))
+                            used.update(event["parents"])
+                        if "reserve" in event:
+                            self.assertIsNone(event["repaired"])
+                            candidates = [p for p in ordered if p not in used and p not in added]
+                            expected = candidates[0] if candidates else None
+                            self.assertEqual(event["reserve"], expected)
+                            if expected is None:
+                                unavailable += 1
+                            else:
+                                following = stage["events"][i + 1]
+                                self.assertEqual(following["kind"], "reserve")
+                                self.assertEqual(following["result"], expected)
+                        if event["kind"] == "reserve":
+                            self.assertEqual(stage["events"][i - 1]["reserve"], event["result"])
+                            self.assertNotIn(event["result"], used)
+                            reserved.add(event["result"])
+                            reserves_from_pool += event["result"] in stage["parentPool"]
+                        if event["status"] == "accepted":
+                            self.assertNotIn(event["result"], added)
+                            self.assertNotIn(event["result"], discarded)
+                            added.append(event["result"])
+                    self.assertEqual(added, stage["population"])
+                    self.assertEqual(stage["immediateReserves"], len(reserved))
+                    self.assertEqual(stage["carriedOver"], sum(e["kind"] in ("reserve", "carry")
+                                                              for e in stage["events"]))
+                    self.assertFalse(reserved.intersection(used))
+                    discarded.update(stage["discarded"])
+                # Проверено удаление резерва и из турниров, и из лучшей половины.
+                self.assertGreater(reserves_from_pool, 0)
+        # Когда резерв исчерпан, алгоритм продолжает попытки без копирования планов.
+        self.assertGreater(unavailable, 0)
+
     def test_same_seed_repeats_search(self):
         task = generate_example(10, 3, 9)
         for method in ("tournament", "best_half"):
