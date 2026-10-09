@@ -128,7 +128,18 @@ button:disabled { opacity: .5; cursor: default; }
 .preview p { margin: 5px 0; font-size: .85rem; }
 .search-tree { margin: 14px 0; }
 .search-tree > p { font-size: .85rem; }
-.tree-viewport { height: 450px; overflow: auto; border: 1px solid #b8cad4; background: #f8fbfc; }
+.tree-viewport {
+  height: 450px;
+  overflow: auto;
+  border: 1px solid #b8cad4;
+  background: #f8fbfc;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+.tree-viewport.panning { cursor: grabbing; }
+.tree-canvas { display: grid; place-items: center; min-width: 100%; min-height: 100%; width: max-content; height: max-content; }
 .tree-viewport svg { max-width: none; border: 0; border-radius: 0; }
 .tree-edge { stroke: #94afbd; stroke-width: 1.5; }
 .tree-node { cursor: pointer; }
@@ -140,6 +151,8 @@ button:disabled { opacity: .5; cursor: default; }
 .tree-node.plan text { fill: white; }
 .tree-node.best-path rect { stroke: #25495f; stroke-width: 3; }
 .tree-node.active rect { stroke-width: 4; }
+.current-marker { display: none; }
+.tree-node.active .current-marker { display: block; }
 progress { width: 100%; accent-color: #315d77; }
 
 .scroll { overflow-x: auto; }
