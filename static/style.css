@@ -126,6 +126,14 @@ button:disabled { opacity: .5; cursor: default; }
 .metric small { color: #617e8d; }
 .preview { padding: 8px 12px; margin: 12px 0; background: #f2f7f9; }
 .preview p { margin: 5px 0; font-size: .85rem; }
+.generation-details { margin: 16px 0; padding: 12px; border: 1px solid #b8cad4; border-radius: 4px; }
+.generation-details details { margin: 12px 0; }
+.generation-details summary { cursor: pointer; font-weight: bold; padding: 5px 0; }
+.generation-details > div > p { font-size: .85rem; }
+.generation-details .scroll { max-height: 360px; overflow: auto; }
+.generation-details select { max-width: 100%; }
+.generation-details .controls label { min-width: 0; max-width: 100%; }
+.gene-changed { background: #dfeaf0; box-shadow: inset 0 0 0 2px #617e8d; font-weight: bold; }
 .search-tree { margin: 14px 0; }
 .search-tree > p { font-size: .85rem; }
 .tree-viewport {

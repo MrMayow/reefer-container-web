@@ -440,7 +440,7 @@ function renderRun(method) {
     stats.append(metric("Поколение", stage.generation), metric("Разных планов", stage.distinctPlans + " / " + run.populationSize),
       metric("Скрещивания", stage.crossovers), metric("Мутации", stage.mutations),
       metric("Исправления", stage.repairs), metric("Разных родителей", stage.parentsUsed),
-      metric("Добрано из прежних", stage.carriedOver));
+      metric("Добрано из прежних", stage.carriedOver), metric("Выбывших планов за запуск", stage.discardedCount));
     if (stage.generation === 0) {
       stats.append(metric("Попыток начального поиска", fmt.format(run.initialAttempts)),
         metric("Проверок назначений", fmt.format(run.initialNodesVisited)));
@@ -471,6 +471,7 @@ function renderRun(method) {
     });
     box.append(preview);
   }
+  if (method === "genetic" && run.plans) addGenerationDetails(box, run, index);
   if (run.bestAssignment) {
     const button = make("button", "Применить лучший план");
     button.onclick = () => { task.assignment = { ...run.bestAssignment }; refresh(); };

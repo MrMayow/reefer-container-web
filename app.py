@@ -66,7 +66,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(generate_example())
             return
         allowed = {"/": "index.html", "/style.css": "style.css",
-                   "/app.js": "app.js", "/tree.js": "tree.js", "/favicon.svg": "favicon.svg"}
+                   "/app.js": "app.js", "/tree.js": "tree.js",
+                   "/generation.js": "generation.js", "/favicon.svg": "favicon.svg"}
         name = allowed.get(path)
         if name is None:
             self.send_error(404, "Not found")

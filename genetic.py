@@ -6,7 +6,7 @@ from model import evaluate, integer_option, placement_options, verified_assignme
 
 
 def solve_genetic(task, options=None):
-    """Ищет допустимый план; история хранит лучший план после каждого поколения."""
+    """Ищет допустимый план; история хранит популяции и действия каждого поколения."""
     evaluate(task)  # Проверка структуры и целочисленных исходных данных.
     if options is None:
         options = {}
@@ -51,7 +51,7 @@ def solve_genetic(task, options=None):
                    and powers[j] <= sites[j]["powerLimit"] for j in range(m))
 
     def construct(preferred=None, max_nodes=5000, excluded=()):
-        """Собирает допустимый план, пропуская уже добавленные размещения."""
+        """Собирает допустимый план, пропуская запрещённые размещения."""
         plan = [-1] * n
         counts, weights, powers = [0] * m, [0] * m, [0] * m
         order = list(range(n))
@@ -100,9 +100,22 @@ def solve_genetic(task, options=None):
         found = fill(0)
         return (tuple(plan) if found else None), visited, limited
 
+    discarded = set()  # Планы, выбывшие из популяции, не возвращаются в этом запуске.
+    plans, plan_ids = [], {}
+
+    def plan_id(plan):
+        """В истории хранятся номера планов, сами хромосомы записываются один раз."""
+        if plan not in plan_ids:
+            plan_ids[plan] = len(plans)
+            valid = feasible(plan)
+            plans.append({"chromosome": list(plan), "valid": valid,
+                          "cost": plan_cost(plan) if valid else None})
+        return plan_ids[plan]
+
     def mutate(plan):
         """Пробует выбранный тип мутации и возвращает допустимый вариант."""
-        for _ in range(12):
+        retired_skips = 0
+        for attempt in range(1, 13):
             changed = list(plan)
             i = rng.randrange(n)
             if mutation_type == "move":
@@ -115,13 +128,17 @@ def solve_genetic(task, options=None):
                 if k == i or changed[k] == changed[i]:
                     continue
                 changed[i], changed[k] = changed[k], changed[i]
-            if feasible(changed):
-                return tuple(changed)
-        return plan
+            changed = tuple(changed)
+            if changed in discarded:
+                retired_skips += 1
+            elif feasible(changed):
+                return changed, attempt, retired_skips
+        return plan, 12, retired_skips
 
     current = task["assignment"]
     initial = tuple(site_index.get(current.get(c["id"]), -1) for c in containers)
     population = [initial] if feasible(initial) else []
+    events = [{"kind": "manual", "result": plan_id(initial), "status": "accepted"}] if population else []
     initial_attempts = initial_nodes = 0
     initial_budget = 5_000_000
     for _ in range(population_size * 20):
@@ -131,6 +148,9 @@ def solve_genetic(task, options=None):
             max_nodes=min(100_000, initial_budget - initial_nodes), excluded=population)
         initial_attempts += 1
         initial_nodes += nodes
+        events.append({"kind": "initial", "result": plan_id(candidate) if candidate is not None else None,
+                       "status": "accepted" if candidate is not None else "not_found",
+                       "nodes": nodes, "limited": limited})
         if candidate is not None:
             population.append(candidate)
         elif not limited:
@@ -147,6 +167,8 @@ def solve_genetic(task, options=None):
     history = []
     used_parents = set()
     carried_over = 0
+    parent_pool = []
+    retired_now = []
 
     def record(generation, crossovers, mutations, repairs):
         history.append({"generation": generation, "bestCost": plan_cost(best),
@@ -154,45 +176,71 @@ def solve_genetic(task, options=None):
                         "populationCount": len(population),
                         "crossovers": crossovers, "mutations": mutations,
                         "repairs": repairs, "parentsUsed": len(used_parents),
-                        "carriedOver": carried_over})
+                        "carriedOver": carried_over,
+                        "population": [plan_id(plan) for plan in population],
+                        "parentPool": [plan_id(plan) for plan in parent_pool],
+                        "discarded": [plan_id(plan) for plan in retired_now],
+                        "discardedCount": len(discarded), "events": events})
 
     record(0, 0, 0, 0)
 
     def select(parent_pool):
         if selection_method == "best_half":
-            return rng.choice(parent_pool)
-        return min(rng.sample(parent_pool, min(3, len(parent_pool))), key=plan_cost)
+            return rng.choice(parent_pool), []
+        participants = rng.sample(parent_pool, min(3, len(parent_pool)))
+        return min(participants, key=plan_cost), participants
 
     for generation in range(1, generations + 1):
         parent_pool = (sorted(population, key=plan_cost)[:max(1, len(population) // 2)]
                        if selection_method == "best_half" else population)
         new_population = [best]  # Элитизм: лучший план никогда не теряется.
+        events = [{"kind": "elite", "result": plan_id(best), "status": "accepted"}]
         used_parents = set()
         carried_over = 0
         crossovers = mutations = repairs = 0
         for _ in range(population_size * 4):
             if len(new_population) >= population_size:
                 break
-            first, second = select(parent_pool), select(parent_pool)
+            first, first_group = select(parent_pool)
+            second, second_group = select(parent_pool)
             used_parents.update((first, second))
             preferred = tuple(first[i] if rng.random() < 0.5 else second[i] for i in range(n))
             crossovers += 1
+            event = {"kind": "crossover", "parents": [plan_id(first), plan_id(second)],
+                     "participants": [[plan_id(plan) for plan in group] for group in (first_group, second_group)],
+                     "crossed": plan_id(preferred), "result": None, "status": "not_found"}
+            events.append(event)
             if feasible(preferred):
                 child = preferred
             else:
-                child, _, _ = construct(preferred, excluded=new_population)
+                child, nodes, limited = construct(preferred, excluded=set(new_population) | discarded)
+                event.update(repaired=plan_id(child) if child is not None else None,
+                             repairNodes=nodes, repairLimited=limited)
                 if child is not None:
                     repairs += 1
                 else:
                     continue
+            event["result"] = plan_id(child)
+            if child in discarded:
+                event["status"] = "retired"
+                continue
+            event["mutation"] = "skipped" if mutation_enabled else "disabled"
             if (mutation_enabled and mutation_probability > 0
                     and rng.random() < mutation_probability / 100):
-                changed = mutate(child)
+                changed, attempts, retired_skips = mutate(child)
+                event.update(mutation="changed" if changed != child else "unchanged",
+                             mutationAttempts=attempts, mutationRetiredSkips=retired_skips)
                 if changed != child:
                     mutations += 1
                     child = changed
-            if child not in new_population:
+            event["result"] = plan_id(child)
+            if child in discarded:
+                event["status"] = "retired"
+            elif child in new_population:
+                event["status"] = "duplicate"
+            else:
                 new_population.append(child)
+                event["status"] = "accepted"
         # Добираем особей, которые не выбирались родителями в этом поколении.
         for candidate in sorted(population, key=plan_cost):
             if len(new_population) >= population_size:
@@ -200,11 +248,17 @@ def solve_genetic(task, options=None):
             if candidate not in used_parents and candidate not in new_population:
                 new_population.append(candidate)
                 carried_over += 1
+                events.append({"kind": "carry", "result": plan_id(candidate), "status": "accepted"})
         while len(new_population) < population_size:
-            candidate, _, _ = construct(excluded=set(new_population) | used_parents)
+            candidate, nodes, limited = construct(excluded=set(new_population) | used_parents | discarded)
+            events.append({"kind": "generate", "result": plan_id(candidate) if candidate is not None else None,
+                           "status": "accepted" if candidate is not None else "not_found",
+                           "nodes": nodes, "limited": limited})
             if candidate is None:
                 break
             new_population.append(candidate)
+        retired_now = [plan for plan in population if plan not in new_population]
+        discarded.update(retired_now)
         population = new_population
         generation_best = min(population, key=plan_cost)
         if plan_cost(generation_best) < plan_cost(best):
@@ -216,7 +270,7 @@ def solve_genetic(task, options=None):
     return {"method": "genetic", "implemented": True, "status": "found",
             "provenOptimal": False, "message": "Найден допустимый план. Минимальная стоимость не подтверждена.",
             "bestCost": best_cost, "bestAssignment": assignment,
-            "history": history, "generationsRun": generations,
+            "history": history, "plans": plans, "generationsRun": generations,
             "populationSize": population_size, "seed": seed,
             "initialAttempts": initial_attempts, "initialNodesVisited": initial_nodes,
             "selectionMethod": selection_method,

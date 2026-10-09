@@ -145,14 +145,21 @@ class GeneticTests(unittest.TestCase):
 
         rng.sample.side_effect = tournament
         with patch("genetic.random.Random", return_value=rng):
-            answer = solve_genetic(task, {"generations": 1, "populationSize": 4,
+            answer = solve_genetic(task, {"generations": 3, "populationSize": 4,
                                           "mutationEnabled": False})
         self.assertEqual(answer["history"][0]["populationCount"], 4)
-        last = answer["history"][-1]
+        last = answer["history"][1]
         self.assertEqual(last["parentsUsed"], 2)
         self.assertEqual(last["carriedOver"], 2)
         self.assertEqual(last["populationCount"], 3)
         self.assertEqual(last["distinctPlans"], 3)
+        # После выпадения планов добор не возвращает их в следующих поколениях.
+        self.assertEqual([stage["populationCount"] for stage in answer["history"]], [4, 3, 2, 1])
+        discarded = set()
+        for stage in answer["history"]:
+            self.assertFalse(discarded.intersection(stage["population"]))
+            discarded.update(stage["discarded"])
+            self.assertEqual(len(discarded), stage["discardedCount"])
 
     def test_mutation_can_be_disabled_or_limited_to_one_type(self):
         task = generate_example(1, 2, 3)
@@ -194,7 +201,10 @@ class GeneticTests(unittest.TestCase):
         self.assertEqual(sum(stage["mutations"] for stage in never["history"]), 0)
         self.assertGreater(sum(stage["mutations"] for stage in always["history"]), 0)
         disabled = solve_genetic(task, {**options, "mutationEnabled": False})
-        self.assertEqual(never["history"], disabled["history"])
+        # Поиск одинаковый; подробный журнал различает выключенные мутации и вероятность 0%.
+        self.assertEqual([{k: v for k, v in stage.items() if k != "events"} for stage in never["history"]],
+                         [{k: v for k, v in stage.items() if k != "events"} for stage in disabled["history"]])
+        self.assertEqual(never["plans"], disabled["plans"])
         self.assertEqual(solve_genetic(task, options),
                          solve_genetic(task, {**options, "mutationProbability": 60}))
 
@@ -205,6 +215,62 @@ class GeneticTests(unittest.TestCase):
         self.assertEqual(answer["status"], "not_found")
         self.assertFalse(answer["provenOptimal"])
         self.assertNotIn("bestAssignment", answer)
+
+    def test_discarded_plans_do_not_return_through_repair_mutation_or_fill(self):
+        task = generate_example(13, 5, 26)
+        for selection in ("tournament", "best_half"):
+            with self.subTest(selection=selection):
+                answer = solve_genetic(task, {"generations": 6, "populationSize": 16,
+                                              "selectionMethod": selection, "mutationProbability": 100})
+                discarded = set()
+                repairs = 0
+                for stage in answer["history"]:
+                    self.assertFalse(discarded.intersection(stage["population"]))
+                    for event in stage["events"]:
+                        if event.get("repaired") is not None:
+                            repairs += 1
+                            self.assertNotIn(event["repaired"], discarded)
+                        if event["status"] == "accepted":
+                            self.assertNotIn(event["result"], discarded)
+                    discarded.update(stage["discarded"])
+                    self.assertEqual(len(discarded), stage["discardedCount"])
+                self.assertGreater(repairs, 0)
+                self.assertGreater(len(discarded), 0)
+
+    def test_generation_trace_matches_actual_population_and_parent_selection(self):
+        task = generate_example(12, 3, 26)
+        answer = solve_genetic(task, {"generations": 4, "populationSize": 12,
+                                      "mutationProbability": 100})
+        plans = answer["plans"]
+        self.assertEqual(len(plans), len({tuple(plan["chromosome"]) for plan in plans}))
+        for stage in answer["history"]:
+            accepted = []
+            crossovers = repairs = mutations = 0
+            for event in stage["events"]:
+                if event["kind"] == "crossover":
+                    crossovers += 1
+                    for parent, participants in zip(event["parents"], event["participants"]):
+                        self.assertEqual(len(participants), len(set(participants)))
+                        self.assertTrue(set(participants).issubset(stage["parentPool"]))
+                        self.assertIn(parent, participants)
+                        self.assertEqual(plans[parent]["cost"], min(plans[p]["cost"] for p in participants))
+                    first, second = [plans[p]["chromosome"] for p in event["parents"]]
+                    self.assertTrue(all(j in (first[i], second[i]) for i, j in enumerate(plans[event["crossed"]]["chromosome"])))
+                    repairs += event.get("repaired") is not None
+                    mutations += event.get("mutation") == "changed"
+                if event["status"] == "duplicate":
+                    self.assertIn(event["result"], accepted)
+                if event["status"] == "accepted":
+                    self.assertNotIn(event["result"], accepted)
+                    accepted.append(event["result"])
+            self.assertEqual(accepted, stage["population"])
+            self.assertEqual((crossovers, repairs, mutations), (stage["crossovers"], stage["repairs"], stage["mutations"]))
+            for id in stage["population"]:
+                assignment = {c["id"]: task["sites"][plans[id]["chromosome"][i]]["id"]
+                              for i, c in enumerate(task["containers"])}
+                checked = evaluate({**task, "assignment": assignment})
+                self.assertTrue(checked["valid"])
+                self.assertEqual(checked["totalCost"], plans[id]["cost"])
 
     def test_fractional_or_excessive_settings_are_rejected(self):
         task = generate_example(2, 1, 3)
