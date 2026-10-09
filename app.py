@@ -6,6 +6,7 @@ import json
 import mimetypes
 import socket
 import sys
+from time import perf_counter
 
 from model import evaluate, generate_example
 from genetic import solve_genetic
@@ -90,6 +91,7 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size).decode("utf-8"))
             if not isinstance(data, dict):
                 raise ValueError("Ожидается объект JSON.")
+            started_at = perf_counter()
             if self.path == "/api/evaluate":
                 result = evaluate(data)
             elif self.path == "/api/generate":
@@ -102,6 +104,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.stream_exhaustive(data.get("task"), data.get("options"))
                     return
                 result = SOLVERS[method](data.get("task"), data.get("options"))
+            if self.path != "/api/generate":
+                result["elapsedSeconds"] = perf_counter() - started_at
             self.send_json(result)
         except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             self.send_json({"error": str(exc)}, 400)

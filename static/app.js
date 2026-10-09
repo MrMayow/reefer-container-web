@@ -279,6 +279,7 @@ document.onpointercancel = () => {
 
 function renderSummary() {
   $("total-cost").textContent = calculation ? money(calculation.totalCost) : "—";
+  $("evaluation-time").textContent = calculation ? "Время пересчёта: " + seconds(calculation.elapsedSeconds) : "";
   $("plan-status").textContent = !calculation ? "Проверьте данные" :
     calculation.valid ? "План допустим" : "План недопустим";
   const issues = $("issues");
@@ -313,30 +314,26 @@ function renderCosts() {
   }
 }
 
+function svgElement(tag, attributes, text = "") {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const name in attributes) node.setAttribute(name, attributes[name]);
+  node.textContent = text;
+  return node;
+}
+
 function plot(records, keys, index, title) {
   const values = records.flatMap((item) => keys.map((key) => item[key]).filter((value) => value !== null));
   if (!values.length) return make("p", "Допустимый план пока не найден.");
   const low = keys.length === 1 ? Math.min(...values) : 0;
   const range = Math.max(1, Math.max(...values) - low);
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 640 180");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", title);
+  const svg = svgElement("svg", { viewBox: "0 0 640 180", role: "img", "aria-label": title });
   const x = (i) => 15 + i * 610 / Math.max(1, records.length - 1);
   const y = (value) => 155 - (value - low) * 125 / range;
   keys.forEach((key, color) => {
     const points = records.map((item, i) => item[key] === null ? "" : x(i) + "," + y(item[key])).filter(Boolean);
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    line.setAttribute("points", points.join(" "));
-    line.setAttribute("class", "line line-" + color);
-    svg.append(line);
+    svg.append(svgElement("polyline", { points: points.join(" "), class: "line line-" + color }));
     if (records[index][key] !== null) {
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", x(index));
-      dot.setAttribute("cy", y(records[index][key]));
-      dot.setAttribute("r", "5");
-      dot.setAttribute("class", "dot dot-" + color);
-      svg.append(dot);
+      svg.append(svgElement("circle", { cx: x(index), cy: y(records[index][key]), r: 5, class: "dot dot-" + color }));
     }
   });
   return svg;
@@ -348,12 +345,115 @@ function metric(name, value) {
   return box;
 }
 
+function addSearchTree(box, run) {
+  const button = make("button", "Показать дерево поиска");
+  const panel = make("div", "", "search-tree");
+  panel.hidden = true;
+  button.setAttribute("aria-expanded", "false");
+  button.onclick = () => {
+    panel.hidden = !panel.hidden;
+    button.textContent = panel.hidden ? "Показать дерево поиска" : "Скрыть дерево поиска";
+    button.setAttribute("aria-expanded", String(!panel.hidden));
+    if (!panel.hidden && !panel.children.length) renderSearchTree(panel, run);
+  };
+  box.append(button, panel);
+}
+
+function renderSearchTree(box, run) {
+  const tree = run.tree;
+  const names = { branch: "Разветвление", bound: "Отсечено по стоимости",
+    capacity: "Нет допустимого продолжения", plan: "Новый лучший план", limit: "Лимит узлов" };
+  box.append(make("p", "Узел — очередное назначение контейнера. № — порядок проверки. Пунктир — отсечение, тёмная рамка — назначения итогового плана. Нажмите узел или выберите шаг ползунком."));
+  if (run.treeTruncated) box.append(make("p", "Сохранены первые " + run.treeLimit + " шагов дерева. Сам поиск продолжался; схема показана частично."));
+  if (run.status.startsWith("limit")) box.append(make("p", "Поиск остановлен по лимиту. Непроверенные продолжения в схему не входят."));
+  const children = tree.map(() => []);
+  tree.forEach((node, i) => { if (node.parent !== null) children[node.parent].push(i); });
+  const y = [];
+  let rows = 0;
+  function place(i) {
+    children[i].forEach(place);
+    y[i] = children[i].length ? (y[children[i][0]] + y[children[i].at(-1)]) / 2 : 45 + rows++ * 90;
+  }
+  place(0);
+  const width = (Math.max(...tree.map((node) => node.depth)) + 1) * 250;
+  const height = rows * 90 + 10;
+  const controls = make("div", "", "controls");
+  const previous = make("button", "Предыдущий шаг");
+  const next = make("button", "Следующий шаг");
+  const zoom = make("select");
+  zoom.setAttribute("aria-label", "Масштаб дерева");
+  for (const scale of [0.5, 1, 1.5]) {
+    const option = make("option", scale * 100 + "%");
+    option.value = scale;
+    zoom.append(option);
+  }
+  zoom.value = "1";
+  controls.append(previous, next, zoom);
+  const label = make("label", "Шаг дерева", "stage");
+  const slider = make("input");
+  slider.type = "range";
+  slider.min = "0";
+  slider.max = String(tree.length - 1);
+  slider.value = slider.max;
+  label.append(slider);
+  const description = make("div", "", "preview");
+  const viewport = make("div", "", "tree-viewport");
+  box.append(controls, label, description, viewport);
+  function draw() {
+    const step = Number(slider.value);
+    const active = tree[step];
+    const assignments = pathTo(step).reverse().filter((node) => node.container)
+      .map((node) => node.container + " → " + node.site);
+    description.replaceChildren(make("p", "Шаг " + (step + 1) + " из " + tree.length + ": " + names[active.status]),
+      make("p", "Путь: " + (assignments.join("; ") || "корень — контейнеры ещё не размещены")),
+      make("p", "Стоимость назначений: " + money(active.cost) + ". Нижняя оценка: " + (active.lowerBound === null ? "не вычислена" : money(active.lowerBound)) +
+        ". Лучший план к этому шагу: " + (active.bestCost === null ? "пока нет" : money(active.bestCost)) + "."));
+    if (active.status === "bound") description.append(make("p", "Нижняя оценка не меньше стоимости известного плана: продолжение не даст более дешёвого размещения."));
+    if (active.status === "capacity") description.append(make("p", "Нарушено ограничение либо одному из оставшихся контейнеров не подходит ни одна площадка."));
+    const svg = svgElement("svg", { viewBox: "0 0 " + width + " " + height, role: "img", "aria-label": "Дерево ветвей и границ" });
+    const scale = Number(zoom.value);
+    svg.style.width = width * scale + "px";
+    svg.style.height = height * scale + "px";
+    tree.slice(0, step + 1).forEach((node, i) => {
+      const x = node.depth * 250 + 10;
+      if (node.parent !== null) svg.append(svgElement("line", {
+        x1: tree[node.parent].depth * 250 + 230, y1: y[node.parent], x2: x, y2: y[i], class: "tree-edge" }));
+      const onBestPath = run.bestAssignment && pathTo(i).every((item) => !item.container || run.bestAssignment[item.container] === item.site);
+      const group = svgElement("g", { class: "tree-node " + node.status + (onBestPath ? " best-path" : "") + (i === step ? " active" : "") });
+      group.append(svgElement("rect", { x, y: y[i] - 36, width: 220, height: 72, rx: 5 }),
+        svgElement("text", { x: x + 9, y: y[i] - 17 }, (i === step ? "▶ " : "") + "№" + (i + 1) + " " + (node.container ? node.container + " → " + node.site : "Корень")),
+        svgElement("text", { x: x + 9, y: y[i] + 2 }, "Цена " + fmt.format(node.cost) + "; оценка " + (node.lowerBound === null ? "—" : fmt.format(node.lowerBound))),
+        svgElement("text", { x: x + 9, y: y[i] + 22 }, names[node.status]));
+      group.onclick = () => { slider.value = i; draw(); };
+      svg.append(group);
+    });
+    viewport.replaceChildren(svg);
+    viewport.scrollLeft = Math.max(0, active.depth * 250 * scale - 30);
+    viewport.scrollTop = Math.max(0, y[step] * scale - viewport.clientHeight / 2);
+    previous.disabled = step === 0;
+    next.disabled = step === tree.length - 1;
+  }
+  function pathTo(i) {
+    const path = [];
+    for (; i !== null; i = tree[i].parent) path.push(tree[i]);
+    return path;
+  }
+  previous.onclick = () => { slider.value = Number(slider.value) - 1; draw(); };
+  next.onclick = () => { slider.value = Number(slider.value) + 1; draw(); };
+  slider.oninput = zoom.onchange = draw;
+  draw();
+}
+
 function duration(seconds) {
   if (seconds < 60) return Math.ceil(seconds) + " с";
   if (seconds < 3600) return Math.ceil(seconds / 60) + " мин";
   if (seconds < 86400) return Math.ceil(seconds / 3600) + " ч";
   if (seconds < 31536000) return Math.ceil(seconds / 86400) + " сут";
   return "более года";
+}
+
+function seconds(value) {
+  return value < 0.001 ? "< 0,001 с" : value.toFixed(3).replace(".", ",") + " с";
 }
 
 function renderExhaustiveProgress(state, finished = false) {
@@ -371,7 +471,7 @@ function renderExhaustiveProgress(state, finished = false) {
     metric("Прогресс", percent === 0 && done > 0 ? "< 0,01 %" : percent + " %"),
     metric("Процессов", fmt.format(state.workers)),
     metric("Скорость", speed ? fmt.format(Math.round(speed)) + " назнач./с" : "—"),
-    metric("Прошло", duration(state.elapsedSeconds)),
+    metric("Прошло", seconds(state.elapsedSeconds)),
     metric("Осталось примерно", finished ? "0 с" : remaining));
   box.replaceChildren(make("p", finished ? "Перебор завершён" : "Перебор выполняется"), bar, stats);
 }
@@ -388,6 +488,7 @@ function renderRun(method) {
   else if (hasPlan) title = "Лучший найденный план: " + money(run.bestCost);
   else if (run.provenInfeasible) title = "Допустимого плана нет";
   box.append(make("h3", title));
+  box.append(make("p", "Время расчёта: " + seconds(run.elapsedSeconds)));
   if (run.message) box.append(make("p", run.message));
   if (method === "genetic") {
     const selection = run.selectionMethod === "best_half" ? "лучшая половина" : "турнир из трёх";
@@ -404,6 +505,7 @@ function renderRun(method) {
   }
   if (method === "branch_bound") {
     box.append(make("p", "Начальный план: " + run.initialSource + ". Лимит узлов: " + fmt.format(run.nodeLimit) + "."));
+    if (run.tree?.length) addSearchTree(box, run);
   }
   if (method === "exhaustive") {
     box.append(make("p", "Всего назначений: " + fmt.format(BigInt(run.totalCombinations)) +
@@ -505,7 +607,12 @@ async function runMethod(method) {
     $("exhaustive-progress").replaceChildren();
   }
   button.disabled = true;
-  $(method + "-result").textContent = "Вычисляется…";
+  const pending = make("p", "Вычисляется…");
+  $(method + "-result").replaceChildren(pending);
+  const began = performance.now();
+  const timer = setInterval(() => {
+    if (started === revision) pending.textContent = "Вычисляется… Прошло: " + seconds((performance.now() - began) / 1000);
+  }, 250);
   try {
     const answer = controller
       ? await postStream({ method, task, options }, (state) => {
@@ -523,6 +630,7 @@ async function runMethod(method) {
       if (controller) $("exhaustive-progress").replaceChildren();
     }
   } finally {
+    clearInterval(timer);
     button.disabled = false;
     if (controller && exhaustiveController === controller) {
       exhaustiveController = null;

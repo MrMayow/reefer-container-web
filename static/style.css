@@ -126,6 +126,20 @@ button:disabled { opacity: .5; cursor: default; }
 .metric small { color: #617e8d; }
 .preview { padding: 8px 12px; margin: 12px 0; background: #f2f7f9; }
 .preview p { margin: 5px 0; font-size: .85rem; }
+.search-tree { margin: 14px 0; }
+.search-tree > p { font-size: .85rem; }
+.tree-viewport { height: 450px; overflow: auto; border: 1px solid #b8cad4; background: #f8fbfc; }
+.tree-viewport svg { max-width: none; border: 0; border-radius: 0; }
+.tree-edge { stroke: #94afbd; stroke-width: 1.5; }
+.tree-node { cursor: pointer; }
+.tree-node rect { fill: white; stroke: #94afbd; stroke-width: 1.5; }
+.tree-node text { fill: #233b4a; font-size: 12px; }
+.tree-node.bound rect, .tree-node.capacity rect { fill: #eef4f7; stroke-dasharray: 5 3; }
+.tree-node.limit rect { stroke-dasharray: 2 3; }
+.tree-node.plan rect { fill: #315d77; }
+.tree-node.plan text { fill: white; }
+.tree-node.best-path rect { stroke: #25495f; stroke-width: 3; }
+.tree-node.active rect { stroke-width: 4; }
 progress { width: 100%; accent-color: #315d77; }
 
 .scroll { overflow-x: auto; }

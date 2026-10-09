@@ -9,6 +9,61 @@ from model import evaluate, generate_example
 
 
 class BranchBoundTests(unittest.TestCase):
+    def test_returns_to_another_branch_when_greedy_choice_is_more_expensive(self):
+        task = {"containers": [{"id": "К01", "weight": 1, "power": 1, "storage": 1},
+                               {"id": "К02", "weight": 1, "power": 1, "storage": 10}],
+                "sites": [{"id": "A", "places": 1, "massLimit": 10, "powerLimit": 10,
+                           "storageRate": 1, "travelTime": 0, "travelRate": 0},
+                          {"id": "B", "places": 1, "massLimit": 10, "powerLimit": 10,
+                           "storageRate": 10, "travelTime": 0, "travelRate": 0}],
+                "assignment": {"К01": "A", "К02": "B"},
+                "limitHours": 20, "tariffMode": "container_hour"}
+        self.assertEqual(evaluate(task)["totalCost"], 101)
+        answer = solve_branch_bound(task)
+        self.assertEqual(answer["bestCost"], 20)
+        self.assertEqual(answer["bestAssignment"], {"К01": "B", "К02": "A"})
+        self.assertTrue(answer["provenOptimal"])
+        self.assertEqual([node["site"] for node in answer["tree"] if node["depth"] == 1], ["A", "B"])
+        self.assertEqual({node["status"] for node in answer["tree"]}, {"branch", "bound", "plan", "capacity"})
+
+    def test_tree_bounds_and_resource_pruning_are_safe(self):
+        task = generate_example(4, 3, 7)
+        answer = solve_branch_bound(task)
+        tree = answer["tree"]
+        self.assertFalse(answer["treeTruncated"])
+        for index, node in enumerate(tree):
+            partial = {}
+            ancestor = index
+            while ancestor is not None:
+                current = tree[ancestor]
+                if current["container"]:
+                    partial[current["container"]] = current["site"]
+                ancestor = current["parent"]
+            self.assertEqual(evaluate({**task, "assignment": partial})["totalCost"], node["cost"])
+            if node["parent"] is not None:
+                self.assertLess(node["parent"], index)
+                self.assertEqual(node["depth"], tree[node["parent"]]["depth"] + 1)
+            remaining = [c["id"] for c in task["containers"] if c["id"] not in partial]
+            completions = []
+            for sites in product((site["id"] for site in task["sites"]), repeat=len(remaining)):
+                checked = evaluate({**task, "assignment": {**partial, **dict(zip(remaining, sites))}})
+                if checked["valid"]:
+                    completions.append(checked["totalCost"])
+            if completions and node["lowerBound"] is not None:
+                self.assertLessEqual(node["lowerBound"], min(completions))
+            if node["status"] == "bound":
+                self.assertGreaterEqual(node["lowerBound"], node["bestCost"])
+            if node["status"] == "capacity":
+                self.assertFalse(completions)
+
+    def test_tree_size_does_not_stop_search(self):
+        answer = solve_branch_bound(generate_example(13, 5, 26))
+        self.assertTrue(answer["treeTruncated"])
+        self.assertEqual(len(answer["tree"]), answer["treeLimit"])
+        self.assertGreater(answer["nodesVisited"], answer["treeLimit"])
+        self.assertTrue(answer["provenOptimal"])
+        self.assertEqual(answer["bestCost"], 53637)
+
     def test_matches_exhaustive_search_for_both_tariffs(self):
         for mode in ("container_hour", "ton_hour"):
             with self.subTest(mode=mode):
@@ -51,6 +106,7 @@ class BranchBoundTests(unittest.TestCase):
         self.assertEqual(answer["status"], "limit_with_plan")
         self.assertFalse(answer["provenOptimal"])
         self.assertEqual(answer["nodesVisited"], 1)
+        self.assertEqual(answer["tree"][-1]["status"], "limit")
         self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
 
     def test_limit_without_incumbent_does_not_claim_infeasibility(self):

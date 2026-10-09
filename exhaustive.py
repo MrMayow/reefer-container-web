@@ -39,6 +39,7 @@ def check_chunk(prefix, suffix_length, m, containers, sites, allowed, costs):
 
 def solve_exhaustive(task, options=None, progress=None):
     """Проверяет все назначения; несколько процессов используют разные группы."""
+    started_at = perf_counter()
     evaluate(task)
     if options is None:
         options = {}
@@ -66,7 +67,7 @@ def solve_exhaustive(task, options=None, progress=None):
     history = []
     checkpoint = max(1, total // 60)
     next_checkpoint = checkpoint
-    started_at = last_report = perf_counter()
+    last_report = perf_counter()
 
     def record(event):
         stage = {"event": event, "checkedCount": checked_count,
