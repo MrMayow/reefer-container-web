@@ -70,14 +70,16 @@ def solve_genetic(task, options=None):
             options_by_container.append(choices)
 
         visited = 0
+        limited = False
 
         def fill(depth):
-            nonlocal visited
+            nonlocal visited, limited
             if depth == n:
                 return tuple(plan) not in excluded
             i = order[depth]
             for j in options_by_container[depth]:
                 if visited >= max_nodes:
+                    limited = True
                     return False
                 visited += 1
                 if (counts[j] < sites[j]["places"]
@@ -95,7 +97,8 @@ def solve_genetic(task, options=None):
                     powers[j] -= containers[i]["power"]
             return False
 
-        return tuple(plan) if fill(0) else None
+        found = fill(0)
+        return (tuple(plan) if found else None), visited, limited
 
     def mutate(plan):
         """Пробует выбранный тип мутации и возвращает допустимый вариант."""
@@ -119,16 +122,24 @@ def solve_genetic(task, options=None):
     current = task["assignment"]
     initial = tuple(site_index.get(current.get(c["id"]), -1) for c in containers)
     population = [initial] if feasible(initial) else []
-    for _ in range(population_size * 4):
-        if len(population) >= population_size:
+    initial_attempts = initial_nodes = 0
+    initial_budget = 5_000_000
+    for _ in range(population_size * 20):
+        if len(population) >= population_size or initial_nodes >= initial_budget:
             break
-        candidate = construct(max_nodes=50_000)
-        if candidate is not None and candidate not in population:
+        candidate, nodes, limited = construct(
+            max_nodes=min(100_000, initial_budget - initial_nodes), excluded=population)
+        initial_attempts += 1
+        initial_nodes += nodes
+        if candidate is not None:
             population.append(candidate)
+        elif not limited:
+            break  # Поиск завершён: других допустимых размещений нет.
     if not population:
         return {"method": "genetic", "implemented": True, "status": "not_found",
                 "provenOptimal": False, "message": "Допустимый план не найден. Это не доказывает, что его нет.",
                 "history": [], "generationsRun": 0, "populationSize": population_size,
+                "initialAttempts": initial_attempts, "initialNodesVisited": initial_nodes,
                 "seed": seed, "selectionMethod": selection_method,
                 "mutationEnabled": mutation_enabled, "mutationType": mutation_type,
                 "mutationProbability": mutation_probability}
@@ -169,7 +180,7 @@ def solve_genetic(task, options=None):
             if feasible(preferred):
                 child = preferred
             else:
-                child = construct(preferred, excluded=new_population)
+                child, _, _ = construct(preferred, excluded=new_population)
                 if child is not None:
                     repairs += 1
                 else:
@@ -190,7 +201,7 @@ def solve_genetic(task, options=None):
                 new_population.append(candidate)
                 carried_over += 1
         while len(new_population) < population_size:
-            candidate = construct(excluded=set(new_population) | used_parents)
+            candidate, _, _ = construct(excluded=set(new_population) | used_parents)
             if candidate is None:
                 break
             new_population.append(candidate)
@@ -207,6 +218,7 @@ def solve_genetic(task, options=None):
             "bestCost": best_cost, "bestAssignment": assignment,
             "history": history, "generationsRun": generations,
             "populationSize": population_size, "seed": seed,
+            "initialAttempts": initial_attempts, "initialNodesVisited": initial_nodes,
             "selectionMethod": selection_method,
             "mutationEnabled": mutation_enabled, "mutationType": mutation_type,
             "mutationProbability": mutation_probability}

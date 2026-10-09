@@ -17,7 +17,8 @@ class GeneticTests(unittest.TestCase):
                                       "mutationType": "move", "mutationProbability": 60})
         self.assertGreater(answer["history"][0]["distinctPlans"], 1)
         self.assertLess(answer["bestCost"], original_cost)
-        self.assertLess(answer["bestCost"], answer["history"][0]["bestCost"])
+        self.assertLessEqual(answer["bestCost"], answer["history"][0]["bestCost"])
+        self.assertEqual(answer["history"][0]["populationCount"], 36)
         self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
 
     def test_result_and_each_shown_stage_are_feasible(self):
@@ -54,6 +55,7 @@ class GeneticTests(unittest.TestCase):
                 self.assertEqual(len(answer["history"]), 5)
                 self.assertTrue(all(stage["populationCount"] == stage["distinctPlans"] == 1
                                     for stage in answer["history"]))
+                self.assertEqual(answer["initialAttempts"], 1)
                 self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
 
     def test_repair_and_mutation_keep_generations_unique(self):
@@ -89,6 +91,38 @@ class GeneticTests(unittest.TestCase):
                 options = {"generations": 8, "populationSize": 12,
                            "seed": 42, "selectionMethod": method}
                 self.assertEqual(solve_genetic(task, options), solve_genetic(task, options))
+
+    def test_initial_search_finds_all_plans_despite_repeated_first_choices(self):
+        task = generate_example(3, 2, 26)
+        for container in task["containers"]:
+            container.update(weight=1, power=1, storage=1)
+        for j, site in enumerate(task["sites"]):
+            site.update(places=3, massLimit=10, powerLimit=10,
+                        storageRate=j + 1, travelTime=0, travelRate=0)
+        rng = Mock(wraps=random.Random(26))
+        rng.random.return_value = 0.0  # Сначала всегда пробуется дешёвая площадка A.
+        with patch("genetic.random.Random", return_value=rng):
+            answer = solve_genetic(task, {"generations": 1, "populationSize": 12,
+                                          "mutationEnabled": False})
+        initial = answer["history"][0]
+        self.assertEqual(initial["populationCount"], 8)  # Всего 2 ** 3 размещений.
+        self.assertEqual(initial["distinctPlans"], 8)
+        self.assertEqual(answer["initialAttempts"], 8)
+        self.assertGreater(answer["initialNodesVisited"], 0)
+
+    def test_best_half_can_create_more_children_than_parent_count(self):
+        task = generate_example(6, 3, 26)
+        for site in task["sites"]:
+            site.update(places=6, massLimit=1000, powerLimit=1000)
+        task["limitHours"] = 100
+        answer = solve_genetic(task, {"generations": 1, "populationSize": 12,
+                                      "selectionMethod": "best_half", "mutationEnabled": False})
+        initial, last = answer["history"]
+        self.assertEqual(initial["populationCount"], 12)
+        self.assertEqual(last["populationCount"], 12)
+        self.assertLessEqual(last["parentsUsed"], 6)
+        self.assertGreater(last["crossovers"], 6)
+        self.assertEqual(last["carriedOver"], 0)
 
     def test_fill_skips_used_parent_even_when_its_child_was_a_duplicate(self):
         task = generate_example(2, 2, 26)

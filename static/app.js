@@ -438,6 +438,10 @@ function renderRun(method) {
       metric("Скрещивания", stage.crossovers), metric("Мутации", stage.mutations),
       metric("Исправления", stage.repairs), metric("Разных родителей", stage.parentsUsed),
       metric("Добрано из прежних", stage.carriedOver));
+    if (stage.generation === 0) {
+      stats.append(metric("Попыток начального поиска", fmt.format(run.initialAttempts)),
+        metric("Проверок назначений", fmt.format(run.initialNodesVisited)));
+    }
   } else if (method === "branch_bound") {
     stats.append(metric("Узлов", fmt.format(stage.nodesVisited)),
       metric("Отсечено по оценке", fmt.format(stage.prunedBound)),
