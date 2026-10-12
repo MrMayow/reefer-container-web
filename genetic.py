@@ -140,7 +140,7 @@ def solve_genetic(task, options=None):
     population = [initial] if feasible(initial) else []
     events = [{"kind": "manual", "result": plan_id(initial), "status": "accepted"}] if population else []
     initial_attempts = initial_nodes = 0
-    initial_budget = 5_000_000
+    initial_budget = 50_000_000
     for _ in range(population_size * 20):
         if len(population) >= population_size or initial_nodes >= initial_budget:
             break
@@ -195,6 +195,8 @@ def solve_genetic(task, options=None):
         ordered_population = sorted(population, key=plan_cost)
         parent_pool = (ordered_population[:max(1, len(population) // 2)]
                        if selection_method == "best_half" else population)
+        reserve_pool = (ordered_population[len(parent_pool):]
+                        if selection_method == "best_half" else ordered_population)
         available_parents = parent_pool[:]
         new_population = [best]  # Элитизм: лучший план никогда не теряется.
         events = [{"kind": "elite", "result": plan_id(best), "status": "accepted"}]
@@ -223,7 +225,7 @@ def solve_genetic(task, options=None):
                     repairs += 1
                 else:
                     event["reserve"] = None
-                    for candidate in ordered_population:
+                    for candidate in reserve_pool:
                         if candidate not in used_parents and candidate not in new_population:
                             new_population.append(candidate)
                             carried_over += 1
@@ -255,16 +257,17 @@ def solve_genetic(task, options=None):
             else:
                 new_population.append(child)
                 event["status"] = "accepted"
-        # Добираем особей, которые не выбирались родителями в этом поколении.
-        for candidate in ordered_population:
+        # В режиме лучшей половины старые особи берутся только из нижней части.
+        for candidate in reserve_pool:
             if len(new_population) >= population_size:
                 break
             if candidate not in used_parents and candidate not in new_population:
                 new_population.append(candidate)
                 carried_over += 1
                 events.append({"kind": "carry", "result": plan_id(candidate), "status": "accepted"})
+        excluded_parents = set(parent_pool) if selection_method == "best_half" else used_parents
         while len(new_population) < population_size:
-            candidate, nodes, limited = construct(excluded=set(new_population) | used_parents | discarded)
+            candidate, nodes, limited = construct(excluded=set(new_population) | excluded_parents | discarded)
             events.append({"kind": "generate", "result": plan_id(candidate) if candidate is not None else None,
                            "status": "accepted" if candidate is not None else "not_found",
                            "nodes": nodes, "limited": limited})

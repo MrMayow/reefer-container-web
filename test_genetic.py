@@ -95,6 +95,8 @@ class GeneticTests(unittest.TestCase):
                 reserves_from_pool = 0
                 for before, stage in zip(answer["history"], answer["history"][1:]):
                     ordered = sorted(before["population"], key=lambda i: answer["plans"][i]["cost"])
+                    reserve_pool = ([p for p in ordered if p not in stage["parentPool"]]
+                                    if selection == "best_half" else ordered)
                     used, reserved, added = set(), set(), []
                     for i, event in enumerate(stage["events"]):
                         if event["kind"] == "crossover":
@@ -104,7 +106,7 @@ class GeneticTests(unittest.TestCase):
                             used.update(event["parents"])
                         if "reserve" in event:
                             self.assertIsNone(event["repaired"])
-                            candidates = [p for p in ordered if p not in used and p not in added]
+                            candidates = [p for p in reserve_pool if p not in used and p not in added]
                             expected = candidates[0] if candidates else None
                             self.assertEqual(event["reserve"], expected)
                             if expected is None:
@@ -118,6 +120,10 @@ class GeneticTests(unittest.TestCase):
                             self.assertNotIn(event["result"], used)
                             reserved.add(event["result"])
                             reserves_from_pool += event["result"] in stage["parentPool"]
+                        if event["kind"] in ("reserve", "carry"):
+                            self.assertIn(event["result"], reserve_pool)
+                        if selection == "best_half" and event["kind"] == "generate" and event["result"] is not None:
+                            self.assertNotIn(event["result"], stage["parentPool"])
                         if event["status"] == "accepted":
                             self.assertNotIn(event["result"], added)
                             self.assertNotIn(event["result"], discarded)
@@ -128,10 +134,51 @@ class GeneticTests(unittest.TestCase):
                                                               for e in stage["events"]))
                     self.assertFalse(reserved.intersection(used))
                     discarded.update(stage["discarded"])
-                # Проверено удаление резерва и из турниров, и из лучшей половины.
-                self.assertGreater(reserves_from_pool, 0)
+                if selection == "best_half":
+                    self.assertEqual(reserves_from_pool, 0)
+                else:
+                    self.assertGreater(reserves_from_pool, 0)
         # Когда резерв исчерпан, алгоритм продолжает попытки без копирования планов.
         self.assertGreater(unavailable, 0)
+
+    def test_best_half_keeps_parent_group_fixed_during_crossovers(self):
+        original_rng = random.Random(26)
+        rng = Mock(wraps=original_rng)
+        selected_pools = []
+
+        def choose(pool):
+            selected_pools.append(tuple(pool))
+            return original_rng.choice(pool)
+
+        rng.choice.side_effect = choose
+        with patch("genetic.random.Random", return_value=rng):
+            answer = solve_genetic(generate_example(13, 5, 26),
+                                   {"generations": 3, "populationSize": 12, "selectionMethod": "best_half"})
+        offset = 0
+        for stage in answer["history"][1:]:
+            expected = tuple(tuple(answer["plans"][p]["chromosome"]) for p in stage["parentPool"])
+            for pool in selected_pools[offset:offset + 2 * stage["crossovers"]]:
+                self.assertEqual(pool, expected)
+            offset += 2 * stage["crossovers"]
+        self.assertEqual(offset, len(selected_pools))
+        self.assertGreater(sum(stage["immediateReserves"] for stage in answer["history"]), 0)
+
+    def test_larger_initial_budget_fills_large_constrained_population(self):
+        task = generate_example(40, 10, 26)
+        answer = solve_genetic(task, {"generations": 1, "populationSize": 36,
+                                      "selectionMethod": "best_half"})
+        initial = answer["history"][0]
+        self.assertEqual(initial["populationCount"], 36)
+        self.assertEqual(initial["distinctPlans"], 36)
+        self.assertGreater(answer["initialNodesVisited"], 5_000_000)
+        self.assertLessEqual(answer["initialNodesVisited"], 50_000_000)
+        for p in initial["population"]:
+            plan = answer["plans"][p]
+            assignment = {c["id"]: task["sites"][plan["chromosome"][i]]["id"]
+                          for i, c in enumerate(task["containers"])}
+            checked = evaluate({**task, "assignment": assignment})
+            self.assertTrue(checked["valid"])
+            self.assertEqual(checked["totalCost"], plan["cost"])
 
     def test_same_seed_repeats_search(self):
         task = generate_example(10, 3, 9)
