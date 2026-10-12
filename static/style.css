@@ -111,6 +111,11 @@ button:disabled { opacity: .5; cursor: default; }
 .line-1 { stroke: #94afbd; }
 .dot { fill: #315d77; }
 .dot-1 { fill: #94afbd; }
+.chart-scroll { overflow-x: auto; }
+.result .chart { height: auto; min-width: 640px; }
+.chart-axis { fill: none; stroke: #617e8d; stroke-width: 1.5; }
+.chart-grid { stroke: #d9e4e9; stroke-width: 1; }
+.chart-label { fill: #526e7f; font-size: 12px; }
 .stage { display: grid; gap: 6px; margin: 15px 0; font-size: .85rem; }
 .stage input { width: 100%; accent-color: #315d77; }
 .metrics { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }

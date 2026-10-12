@@ -322,21 +322,52 @@ function svgElement(tag, attributes, text = "") {
 }
 
 function plot(records, keys, index, title) {
-  const values = records.flatMap((item) => keys.map((key) => item[key]).filter((value) => value !== null));
+  const values = records.flatMap((item) => keys.map((key) => item[key])).filter(Number.isFinite);
   if (!values.length) return make("p", "Допустимый план пока не найден.");
-  const low = keys.length === 1 ? Math.min(...values) : 0;
-  const range = Math.max(1, Math.max(...values) - low);
-  const svg = svgElement("svg", { viewBox: "0 0 640 180", role: "img", "aria-label": title });
-  const x = (i) => 15 + i * 610 / Math.max(1, records.length - 1);
-  const y = (value) => 155 - (value - low) * 125 / range;
+  const minimum = keys.length === 1 ? Math.min(...values) : 0;
+  const maximum = Math.max(...values);
+  // Шаг шкалы: 1, 2 или 5, умноженные на степень десяти. Все подписи целые.
+  const roughStep = Math.max(1, (maximum - minimum || maximum * 0.04 || 4) / 4);
+  const unit = 10 ** Math.floor(Math.log10(roughStep));
+  const step = [1, 2, 5, 10].map((factor) => factor * unit).find((value) => value >= roughStep);
+  const padding = minimum === maximum ? 2 * step : 0;
+  const low = Math.max(0, Math.floor(minimum / step) * step - padding);
+  const high = Math.max(low + step, Math.ceil(maximum / step) * step + padding);
+  const svg = svgElement("svg", { viewBox: "0 0 800 280", role: "img", "aria-label": title, class: "chart" });
+  const left = Math.max(80, fmt.format(high).length * 7 + 16);
+  const right = 775, top = 30, bottom = 215;
+  const last = records.length - 1;
+  const generations = records[0].generation !== undefined;
+  const x = (i) => left + i * (right - left) / Math.max(1, last);
+  const y = (value) => bottom - (value - low) * (bottom - top) / (high - low);
+  const label = (i) => generations ? records[i].generation : i + 1;
+  svg.append(svgElement("text", { x: left, y: 17, class: "chart-label" }, keys.length === 1 ? "Стоимость, ₽" : "Отсечения, шт."));
+  for (let value = low; value <= high; value += step) {
+    svg.append(svgElement("line", { x1: left, y1: y(value), x2: right, y2: y(value), class: "chart-grid" }),
+      svgElement("text", { x: left - 10, y: y(value) + 4, "text-anchor": "end", class: "chart-label" }, fmt.format(value)));
+  }
+  svg.append(svgElement("path", { d: "M " + left + " " + top + " V " + bottom + " H " + right, class: "chart-axis" }));
+  const ticks = Math.min(5, last);
+  for (let tick = 0; tick <= ticks; tick++) {
+    const i = ticks ? Math.round(tick * last / ticks) : 0;
+    svg.append(svgElement("line", { x1: x(i), y1: bottom, x2: x(i), y2: bottom + 5, class: "chart-axis" }),
+      svgElement("text", { x: x(i), y: bottom + 22, "text-anchor": "middle", class: "chart-label" }, label(i)));
+  }
+  svg.append(svgElement("text", { x: (left + right) / 2, y: 263, "text-anchor": "middle", class: "chart-label" },
+    generations ? "Поколение" : "Этап"));
   keys.forEach((key, color) => {
-    const points = records.map((item, i) => item[key] === null ? "" : x(i) + "," + y(item[key])).filter(Boolean);
+    const points = records.map((item, i) => Number.isFinite(item[key]) ? x(i) + "," + y(item[key]) : "").filter(Boolean);
     svg.append(svgElement("polyline", { points: points.join(" "), class: "line line-" + color }));
-    if (records[index][key] !== null) {
-      svg.append(svgElement("circle", { cx: x(index), cy: y(records[index][key]), r: 5, class: "dot dot-" + color }));
+    if (Number.isFinite(records[index][key])) {
+      const dot = svgElement("circle", { cx: x(index), cy: y(records[index][key]), r: 5, class: "dot dot-" + color });
+      dot.append(svgElement("title", {}, (generations ? "Поколение " : "Этап ") + label(index) + ": " +
+        (keys.length === 1 ? money(records[index][key]) : fmt.format(records[index][key]))));
+      svg.append(dot);
     }
   });
-  return svg;
+  const scroll = make("div", "", "chart-scroll");
+  scroll.append(svg);
+  return scroll;
 }
 
 function metric(name, value) {
@@ -418,7 +449,15 @@ function renderRun(method) {
   const index = Math.min(stages[method], records.length - 1);
   const stage = records[index];
   box.append(make("h4", "Лучшая стоимость"));
-  box.append(plot(records, ["bestCost"], index, "Лучшая стоимость по этапам"));
+  box.append(plot(records, ["bestCost"], index,
+    method === "genetic" ? "Лучшая стоимость по поколениям" : "Лучшая стоимость по этапам"));
+  if (method === "genetic") {
+    const initialCost = records[0].bestCost;
+    const decrease = initialCost - run.bestCost;
+    const percent = initialCost ? fmt.format(Math.round(decrease / initialCost * 10000) / 100) : "0";
+    box.append(make("p", "Поколение 0: " + money(initialCost) + "; поколение " + run.generationsRun + ": " +
+      money(run.bestCost) + ". Снижение за запуск: " + money(decrease) + " (" + percent + "%)."));
+  }
   if (method === "branch_bound") {
     box.append(make("h4", "Отсечённые ветви"));
     box.append(plot(records, ["prunedBound", "prunedCapacity"], index, "Отсечения по оценке и ресурсам"));
