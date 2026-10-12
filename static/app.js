@@ -451,13 +451,6 @@ function renderRun(method) {
   box.append(make("h4", "Лучшая стоимость"));
   box.append(plot(records, ["bestCost"], index,
     method === "genetic" ? "Лучшая стоимость по поколениям" : "Лучшая стоимость по этапам"));
-  if (method === "genetic") {
-    const initialCost = records[0].bestCost;
-    const decrease = initialCost - run.bestCost;
-    const percent = initialCost ? fmt.format(Math.round(decrease / initialCost * 10000) / 100) : "0";
-    box.append(make("p", "Поколение 0: " + money(initialCost) + "; поколение " + run.generationsRun + ": " +
-      money(run.bestCost) + ". Снижение за запуск: " + money(decrease) + " (" + percent + "%)."));
-  }
   if (method === "branch_bound") {
     box.append(make("h4", "Отсечённые ветви"));
     box.append(plot(records, ["prunedBound", "prunedCapacity"], index, "Отсечения по оценке и ресурсам"));
