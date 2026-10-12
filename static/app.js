@@ -474,6 +474,13 @@ function renderRun(method) {
       metric("Исправления", stage.repairs), metric("Разных родителей", stage.parentsUsed),
       metric("Добрано из прежних", stage.carriedOver), metric("Из резерва после исправления", stage.immediateReserves),
       metric("Выбывших планов за запуск", stage.discardedCount));
+    let stagnant = 0;
+    for (let i = index; i > 0 && records[i].bestCost === records[i - 1].bestCost; i--) stagnant++;
+    stats.append(metric("Поколений без улучшения", stagnant));
+    if (index > 0) {
+      const previous = new Set(records[index - 1].population);
+      stats.append(metric("Новых планов", stage.population.filter((id) => !previous.has(id)).length));
+    }
     if (stage.generation === 0) {
       stats.append(metric("Попыток начального поиска", fmt.format(run.initialAttempts)),
         metric("Проверок назначений", fmt.format(run.initialNodesVisited)));

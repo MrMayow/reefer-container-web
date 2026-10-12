@@ -51,7 +51,7 @@ def solve_genetic(task, options=None):
                    and powers[j] <= sites[j]["powerLimit"] for j in range(m))
 
     def construct(preferred=None, max_nodes=5000, excluded=()):
-        """Собирает допустимый план, пропуская запрещённые размещения."""
+        """Собирает допустимый план; при исправлении сначала пробует назначения потомка."""
         plan = [-1] * n
         counts, weights, powers = [0] * m, [0] * m, [0] * m
         order = list(range(n))
@@ -64,7 +64,7 @@ def solve_genetic(task, options=None):
             rng.shuffle(choices)
             if rng.random() < 0.5:
                 choices.sort(key=lambda j: costs[i][j])
-            if preferred is not None and preferred[i] in choices and rng.random() < 0.7:
+            if preferred is not None and preferred[i] in choices:
                 choices.remove(preferred[i])
                 choices.insert(0, preferred[i])
             options_by_container.append(choices)

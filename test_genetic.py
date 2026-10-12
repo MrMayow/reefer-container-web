@@ -2,6 +2,7 @@
 
 import random
 import unittest
+from itertools import chain, repeat
 from unittest.mock import Mock, patch
 
 from genetic import solve_genetic
@@ -9,6 +10,40 @@ from model import evaluate, generate_example
 
 
 class GeneticTests(unittest.TestCase):
+    def test_repair_tries_inherited_assignments_before_other_sites(self):
+        task = generate_example(3, 2, 26)
+        for container in task["containers"]:
+            container.update(weight=1, power=1, storage=1)
+        for j, site in enumerate(task["sites"]):
+            site.update(places=2, massLimit=10, powerLimit=10,
+                        storageRate=j + 1, travelTime=0, travelRate=0)
+        rng = Mock(wraps=random.Random(4))
+        draws = 0
+
+        def choose(pool):
+            nonlocal draws
+            parent = (0, 0, 1) if draws % 2 == 0 else (0, 1, 0)
+            self.assertIn(parent, pool)
+            draws += 1
+            if draws % 2 == 0:
+                # Скрещивание даёт AAA, хотя на площадке только два места.
+                rng.random.side_effect = chain((0.0, 0.0, 0.9), repeat(0.9))
+            return parent
+
+        rng.choice.side_effect = choose
+        with patch("genetic.random.Random", return_value=rng):
+            answer = solve_genetic(task, {"generations": 1, "populationSize": 8,
+                                          "selectionMethod": "best_half", "mutationEnabled": False})
+        event = next(e for e in answer["history"][1]["events"] if e.get("repaired") is not None)
+        crossed = answer["plans"][event["crossed"]]["chromosome"]
+        repaired = answer["plans"][event["repaired"]]["chromosome"]
+        self.assertEqual(crossed, [0, 0, 0])
+        # В этом примере достаточно перенести один контейнер, сохранив два назначения.
+        self.assertEqual(sum(a != b for a, b in zip(crossed, repaired)), 1)
+        assignment = {c["id"]: task["sites"][repaired[i]]["id"]
+                      for i, c in enumerate(task["containers"])}
+        self.assertTrue(evaluate({**task, "assignment": assignment})["valid"])
+
     def test_tight_sites_still_create_diverse_population(self):
         task = generate_example(13, 5, 26)
         original_cost = evaluate(task)["totalCost"]
@@ -86,7 +121,6 @@ class GeneticTests(unittest.TestCase):
 
     def test_failed_repair_immediately_takes_cheapest_unused_reserve(self):
         task = generate_example(13, 5, 26)
-        unavailable = 0
         for selection in ("tournament", "best_half"):
             with self.subTest(selection=selection):
                 answer = solve_genetic(task, {"generations": 8, "populationSize": 24,
@@ -109,9 +143,7 @@ class GeneticTests(unittest.TestCase):
                             candidates = [p for p in reserve_pool if p not in used and p not in added]
                             expected = candidates[0] if candidates else None
                             self.assertEqual(event["reserve"], expected)
-                            if expected is None:
-                                unavailable += 1
-                            else:
+                            if expected is not None:
                                 following = stage["events"][i + 1]
                                 self.assertEqual(following["kind"], "reserve")
                                 self.assertEqual(following["result"], expected)
@@ -138,8 +170,23 @@ class GeneticTests(unittest.TestCase):
                     self.assertEqual(reserves_from_pool, 0)
                 else:
                     self.assertGreater(reserves_from_pool, 0)
-        # Когда резерв исчерпан, алгоритм продолжает попытки без копирования планов.
-        self.assertGreater(unavailable, 0)
+
+    def test_exhausted_reserve_does_not_create_copies(self):
+        task = generate_example(3, 2, 26)
+        for container in task["containers"]:
+            container.update(weight=1, power=1, storage=1)
+        for j, site in enumerate(task["sites"]):
+            site.update(places=2, massLimit=10, powerLimit=10,
+                        storageRate=j + 1, travelTime=0, travelRate=0)
+        for selection in ("best_half", "tournament"):
+            with self.subTest(selection=selection):
+                answer = solve_genetic(task, {"generations": 1, "populationSize": 8, "seed": 4,
+                                              "selectionMethod": selection, "mutationEnabled": False})
+                stage = answer["history"][1]
+                self.assertTrue(any("reserve" in e and e["reserve"] is None for e in stage["events"]))
+                # Всего шесть допустимых планов; заполнить восемь мест без копий нельзя.
+                self.assertEqual(stage["populationCount"], 6)
+                self.assertEqual(len(set(stage["population"])), 6)
 
     def test_best_half_keeps_parent_group_fixed_during_crossovers(self):
         original_rng = random.Random(26)

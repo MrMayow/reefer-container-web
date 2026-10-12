@@ -121,7 +121,9 @@ function renderGenerationDetails(box, run, index) {
       if ("repaired" in event) {
         columns.push({ label: "После исправления", id: event.repaired, compare: event.crossed });
         preview.append(make("p", "Исправление: " + fmt.format(event.repairNodes) + " проверок назначений." +
-          (event.repairLimited ? " Достигнут предел 5 000 проверок." : "") + " Ранее выбывшие планы и повторы нового поколения исключены из поиска."));
+          (event.repairLimited ? " Достигнут предел 5 000 проверок." : "") +
+          " Сначала пробуются назначения потомка, затем другие площадки, если продолжение не подходит." +
+          " Ранее выбывшие планы и повторы нового поколения исключены из поиска."));
         if ("reserve" in event) {
           preview.append(make("p", event.reserve === null ? "Подходящего плана в резерве нет. Будет выбрана следующая пара родителей." :
             "Исправление не удалось. В новое поколение сразу добавлен " + formatPlan(event.reserve) +
