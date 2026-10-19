@@ -90,6 +90,8 @@ class GeneticTests(unittest.TestCase):
                 self.assertEqual(len(answer["history"]), 5)
                 self.assertTrue(all(stage["populationCount"] == stage["distinctPlans"] == 1
                                     for stage in answer["history"]))
+                self.assertTrue(all(stage["crossovers"] == stage["mutations"] == stage["parentsUsed"] == 0
+                                    for stage in answer["history"]))
                 self.assertEqual(answer["initialAttempts"], 1)
                 self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
 
@@ -194,8 +196,9 @@ class GeneticTests(unittest.TestCase):
         selected_pools = []
 
         def choose(pool):
-            selected_pools.append(tuple(pool))
-            return original_rng.choice(pool)
+            selected = original_rng.choice(pool)
+            selected_pools.append((tuple(pool), selected))
+            return selected
 
         rng.choice.side_effect = choose
         with patch("genetic.random.Random", return_value=rng):
@@ -204,11 +207,64 @@ class GeneticTests(unittest.TestCase):
         offset = 0
         for stage in answer["history"][1:]:
             expected = tuple(tuple(answer["plans"][p]["chromosome"]) for p in stage["parentPool"])
-            for pool in selected_pools[offset:offset + 2 * stage["crossovers"]]:
-                self.assertEqual(pool, expected)
+            for i in range(offset, offset + 2 * stage["crossovers"], 2):
+                first_pool, first = selected_pools[i]
+                second_pool, second = selected_pools[i + 1]
+                self.assertEqual(first_pool, expected)
+                self.assertEqual(second_pool, tuple(plan for plan in expected if plan != first))
+                self.assertNotEqual(first, second)
             offset += 2 * stage["crossovers"]
         self.assertEqual(offset, len(selected_pools))
         self.assertGreater(sum(stage["immediateReserves"] for stage in answer["history"]), 0)
+
+    def test_each_pair_has_distinct_parents_in_both_selection_methods(self):
+        task = generate_example(12, 3, 26)
+        for selection in ("tournament", "best_half"):
+            with self.subTest(selection=selection):
+                answer = solve_genetic(task, {"generations": 5, "populationSize": 12,
+                                              "selectionMethod": selection, "seed": 7})
+                events = [e for stage in answer["history"] for e in stage["events"]
+                          if e["kind"] == "crossover"]
+                self.assertTrue(events)
+                for event in events:
+                    first, second = event["parents"]
+                    self.assertNotEqual(first, second)
+                    self.assertNotEqual(answer["plans"][first]["chromosome"],
+                                        answer["plans"][second]["chromosome"])
+                    self.assertNotIn(first, event["participants"][1])
+
+    def test_best_half_with_one_parent_skips_crossovers_and_uses_reserve(self):
+        for count in (2, 3):
+            with self.subTest(population=count):
+                task = generate_example(1, count, 26)
+                task["limitHours"] = 100
+                for site in task["sites"]:
+                    site.update(places=1, massLimit=100, powerLimit=100)
+                answer = solve_genetic(task, {"generations": 3, "populationSize": 4,
+                                              "selectionMethod": "best_half", "mutationProbability": 100})
+                self.assertEqual(answer["history"][0]["populationCount"], count)
+                for stage in answer["history"][1:]:
+                    self.assertEqual(len(stage["parentPool"]), 1)
+                    self.assertEqual(stage["crossovers"], 0)
+                    self.assertEqual(stage["mutations"], 0)
+                    self.assertEqual(stage["parentsUsed"], 0)
+                    self.assertEqual(stage["carriedOver"], count - 1)
+                    self.assertEqual(stage["populationCount"], count)
+
+    def test_two_tournament_candidates_select_different_winners(self):
+        task = generate_example(1, 2, 26)
+        task["limitHours"] = 100
+        for site in task["sites"]:
+            site.update(places=1, massLimit=100, powerLimit=100)
+        answer = solve_genetic(task, {"generations": 2, "populationSize": 4,
+                                      "selectionMethod": "tournament", "mutationEnabled": False})
+        for stage in answer["history"][1:]:
+            events = [e for e in stage["events"] if e["kind"] == "crossover"]
+            self.assertTrue(events)
+            for event in events:
+                self.assertEqual(len(event["participants"][0]), 2)
+                self.assertEqual(len(event["participants"][1]), 1)
+                self.assertNotEqual(*event["parents"])
 
     def test_larger_initial_budget_fills_large_constrained_population(self):
         task = generate_example(40, 10, 26)
@@ -280,8 +336,7 @@ class GeneticTests(unittest.TestCase):
 
         def tournament(pool, count):
             ordered = sorted(pool, key=lambda plan: (sum(plan), plan))
-            offset = len(parent_draws) % 2
-            participants = ordered[offset:offset + count]
+            participants = ordered[:count]
             parent_draws.append(participants[0])
             rng.random.return_value = 0.0  # Каждый потомок повторяет первого родителя.
             return participants

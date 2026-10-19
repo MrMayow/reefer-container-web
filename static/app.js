@@ -477,6 +477,9 @@ function renderRun(method) {
     let stagnant = 0;
     for (let i = index; i > 0 && records[i].bestCost === records[i - 1].bestCost; i--) stagnant++;
     stats.append(metric("Поколений без улучшения", stagnant));
+    if (index > 0 && stage.parentPool.length < 2) {
+      box.append(make("p", "В родительской группе меньше двух разных планов: скрещивания и мутации потомков в этом поколении не выполнялись. Используется добор."));
+    }
     if (index > 0) {
       const previous = new Set(records[index - 1].population);
       stats.append(metric("Новых планов", stage.population.filter((id) => !previous.has(id)).length));

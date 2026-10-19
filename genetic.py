@@ -204,10 +204,10 @@ def solve_genetic(task, options=None):
         carried_over = 0
         crossovers = mutations = repairs = 0
         for _ in range(population_size * 4):
-            if len(new_population) >= population_size:
+            if len(new_population) >= population_size or len(available_parents) < 2:
                 break
             first, first_group = select(available_parents)
-            second, second_group = select(available_parents)
+            second, second_group = select([plan for plan in available_parents if plan != first])
             used_parents.update((first, second))
             preferred = tuple(first[i] if rng.random() < 0.5 else second[i] for i in range(n))
             crossovers += 1
