@@ -29,17 +29,6 @@ def solve_branch_bound(task, options=None):
             if checked["valid"] else None)
     best_cost = checked["totalCost"] if checked["valid"] else None
     initial_source = "текущий ручной план" if checked["valid"] else "без начального плана"
-    provided = options.get("incumbentAssignment")
-    if provided is not None:
-        if not isinstance(provided, dict):
-            raise ValueError("incumbentAssignment: ожидается назначение контейнеров по площадкам.")
-        candidate_check = evaluate({**task, "assignment": provided})
-        if not candidate_check["valid"]:
-            raise ValueError("Переданный начальный план нарушает ограничения задачи.")
-        if best_cost is None or candidate_check["totalCost"] < best_cost:
-            best = [site_index[provided[c["id"]]] for c in containers]
-            best_cost = candidate_check["totalCost"]
-            initial_source = "переданный допустимый план"
     plan = [-1] * n
     counts, weights, powers = [0] * m, [0] * m, [0] * m
     nodes = pruned_bound = pruned_capacity = 0

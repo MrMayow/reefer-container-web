@@ -2,7 +2,7 @@
 
 import unittest
 
-from model import evaluate, generate_example
+from model import evaluate, generate_example, placement_options
 
 
 class ModelTests(unittest.TestCase):
@@ -30,14 +30,31 @@ class ModelTests(unittest.TestCase):
         self.assertFalse(result["valid"])
         self.assertGreaterEqual(len(result["issues"]), 4)
 
-    def test_tariff_units_change_only_transport_part(self):
+    def test_cost_matches_original_formula_and_does_not_depend_on_mass(self):
         task = generate_example(1, 1, 3)
-        by_container = evaluate(task)["rows"][0]
-        task["tariffMode"] = "ton_hour"
-        by_ton = evaluate(task)["rows"][0]
-        weight = task["containers"][0]["weight"]
-        self.assertEqual(by_container["storageCost"], by_ton["storageCost"])
-        self.assertEqual(by_ton["travelCost"], by_container["travelCost"] * weight)
+        task["containers"][0].update(weight=18, storage=10)
+        task["sites"][0].update(massLimit=1000, storageRate=100, travelTime=2, travelRate=300)
+        task["limitHours"] = 12
+        self.assertNotIn("tariffMode", task)
+        result = evaluate(task)
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["rows"][0]["storageCost"], 1000)
+        self.assertEqual(result["rows"][0]["travelCost"], 600)
+        self.assertEqual(result["totalCost"], 1600)
+        task["containers"][0]["weight"] = 36
+        self.assertEqual(evaluate(task)["totalCost"], 1600)
+        self.assertEqual(placement_options(task), ([[0]], [[1600]]))
+
+    def test_time_limit_allows_equality_and_excludes_longer_assignments(self):
+        task = generate_example(1, 1, 3)
+        task["containers"][0]["storage"] = 10
+        task["sites"][0]["travelTime"] = 2
+        task["limitHours"] = 12
+        self.assertTrue(evaluate(task)["valid"])
+        self.assertEqual(placement_options(task)[0], [[0]])
+        task["limitHours"] = 11
+        self.assertFalse(evaluate(task)["valid"])
+        self.assertEqual(placement_options(task)[0], [[]])
 
     def test_all_generated_values_and_costs_are_integers(self):
         task = generate_example(20, 3, 26)

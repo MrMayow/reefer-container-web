@@ -11,11 +11,10 @@ from model import evaluate, generate_example
 
 
 class ExhaustiveTests(unittest.TestCase):
-    def test_complete_search_matches_branch_bound_for_both_tariffs(self):
-        for mode in ("container_hour", "ton_hour"):
-            with self.subTest(mode=mode):
-                task = generate_example(5, 3, 7)
-                task["tariffMode"] = mode
+    def test_complete_search_matches_branch_bound(self):
+        for seed in (7, 26):
+            with self.subTest(seed=seed):
+                task = generate_example(5, 3, seed)
                 full = solve_exhaustive(task)
                 branch = solve_branch_bound(task)
                 self.assertEqual(full["status"], "optimal")

@@ -55,7 +55,6 @@ def generate_example(container_count=12, site_count=3, seed=26):
         "sites": sites,
         "assignment": assignment,
         "limitHours": max(30, longest),
-        "tariffMode": "container_hour",
     }
 
 
@@ -72,11 +71,10 @@ def integer_option(options, name, default, minimum, maximum):
     return value
 
 
-def cost_parts(container, site, mode):
+def cost_parts(container, site):
     """Возвращает стоимость хранения и перевозки одного контейнера."""
     storage = container["storage"] * site["storageRate"]
-    factor = container["weight"] if mode == "ton_hour" else 1
-    travel = factor * site["travelTime"] * site["travelRate"]
+    travel = site["travelTime"] * site["travelRate"]
     return storage, travel
 
 
@@ -89,7 +87,7 @@ def placement_options(task):
                         and site["places"] >= 1
                         and container["weight"] <= site["massLimit"]
                         and container["power"] <= site["powerLimit"]])
-        costs.append([sum(cost_parts(container, site, task["tariffMode"]))
+        costs.append([sum(cost_parts(container, site))
                       for site in task["sites"]])
     return choices, costs
 
@@ -107,10 +105,7 @@ def evaluate(data):
         raise ValueError("Нужно от 1 до 10 площадок.")
     if not isinstance(assignment, dict):
         raise ValueError("Назначение должно быть объектом JSON.")
-    limit = _number(data.get("limitHours"), "Предельное время")
-    mode = data.get("tariffMode")
-    if mode not in ("container_hour", "ton_hour"):
-        raise ValueError("Неизвестный способ расчёта тарифа перевозки.")
+    limit = _number(data.get("limitHours"), "Срок перевозки и хранения")
 
     container_ids = set()
     site_ids = set()
@@ -158,7 +153,7 @@ def evaluate(data):
             load["count"] += 1
             load["weight"] += container["weight"]
             load["power"] += container["power"]
-            row["storageCost"], row["travelCost"] = cost_parts(container, site, mode)
+            row["storageCost"], row["travelCost"] = cost_parts(container, site)
             row["cost"] = row["storageCost"] + row["travelCost"]
             load["cost"] += row["cost"]
             total += row["cost"]

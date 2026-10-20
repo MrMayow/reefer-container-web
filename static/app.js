@@ -73,8 +73,6 @@ function resetRuns() {
   $("exhaustive-progress").replaceChildren();
   revision++;
   for (const method in runs) runs[method] = null;
-  $("bb-start").checked = false;
-  $("bb-start").disabled = true;
 }
 
 function numberField(value, label, change) {
@@ -130,7 +128,7 @@ function renderEditors() {
     cell(row, site.id);
     for (const [key, label] of [
       ["places", "Места"], ["massLimit", "Масса"], ["powerLimit", "Мощность"],
-      ["storageRate", "Тариф хранения"], ["travelTime", "Время пути"], ["travelRate", "Тариф перевозки"]
+      ["storageRate", "Тариф хранения"], ["travelTime", "Время пути"], ["travelRate", "Тариф перевозки, ₽/ч"]
     ]) {
       cell(row, numberField(site[key], label + " площадки " + site.id, (value) => { site[key] = value; }));
     }
@@ -147,7 +145,6 @@ function renderEditors() {
     sites.append(row);
   }
   $("limit-hours").value = task.limitHours;
-  $("tariff-mode").value = task.tariffMode;
 }
 
 function message(text) {
@@ -541,9 +538,6 @@ async function runMethod(method) {
   } else {
     options = { workers: Number($("full-workers").value) };
   }
-  if (method === "branch_bound" && $("bb-start").checked && runs.genetic?.bestAssignment) {
-    options.incumbentAssignment = runs.genetic.bestAssignment;
-  }
   const started = revision;
   const controller = method === "exhaustive" ? new AbortController() : null;
   if (controller) {
@@ -568,7 +562,6 @@ async function runMethod(method) {
     runs[method] = answer;
     stages[method] = Math.max(0, (answer.history || []).length - 1);
     if (controller) renderExhaustiveProgress(answer, true);
-    if (method === "genetic") $("bb-start").disabled = !answer.bestAssignment;
   } catch (error) {
     if (started === revision) {
       runs[method] = { error: error.name === "AbortError" ? "Расчёт остановлен." : error.message };
@@ -631,11 +624,6 @@ $("add-site").onclick = () => {
 
 $("limit-hours").oninput = (event) => {
   task.limitHours = Number(event.target.value);
-  resetRuns();
-  refresh();
-};
-$("tariff-mode").onchange = (event) => {
-  task.tariffMode = event.target.value;
   resetRuns();
   refresh();
 };

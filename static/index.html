@@ -7,7 +7,7 @@
   <title>Размещение контейнеров</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css?v=6">
-  <script src="/app.js?v=19" defer></script>
+  <script src="/app.js?v=20" defer></script>
   <script src="/tree.js?v=1" defer></script>
   <script src="/generation.js?v=5" defer></script>
 </head>
@@ -78,7 +78,6 @@
           <label>Лимит узлов <input id="bb-limit" type="number" min="1" max="1000000" value="100000"></label>
           <button id="bb-run">Запустить</button>
         </div>
-        <label class="option"><input id="bb-start" type="checkbox" disabled> Использовать план генетического алгоритма как начальный</label>
         <div id="branch_bound-result" class="result"></div>
       </div>
       <div id="exhaustive-panel" hidden>
@@ -103,20 +102,16 @@
       <section class="panel">
         <h2>Площадки <button id="add-site">Добавить</button></h2>
         <div class="scroll"><table>
-          <thead><tr><th>№</th><th>Места</th><th>Масса</th><th>Мощность</th><th>Хранение, ₽/ч</th><th>Путь, ч</th><th>Перевозка</th><th></th></tr></thead>
+          <thead><tr><th>№</th><th>Места</th><th>Масса</th><th>Мощность</th><th>Хранение, ₽/ч</th><th>Путь, ч</th><th>Перевозка, ₽/ч</th><th></th></tr></thead>
           <tbody id="sites-body"></tbody>
         </table></div>
       </section>
     </div>
 
     <section class="panel">
-      <h2>Общие условия</h2>
+      <h2>Ограничение по времени</h2>
       <div class="controls">
-        <label>Предельное время, ч <input id="limit-hours" type="number" min="0"></label>
-        <label>Тариф перевозки <select id="tariff-mode">
-          <option value="container_hour">₽ / контейнер·ч</option>
-          <option value="ton_hour">₽ / т·ч</option>
-        </select></label>
+        <label>Срок перевозки и хранения, ч <input id="limit-hours" type="number" min="0"></label>
       </div>
     </section>
 

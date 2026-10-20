@@ -4,7 +4,6 @@ from itertools import product
 import unittest
 
 from branch_bound import solve_branch_bound
-from genetic import solve_genetic
 from model import evaluate, generate_example
 
 
@@ -17,7 +16,7 @@ class BranchBoundTests(unittest.TestCase):
                           {"id": "B", "places": 1, "massLimit": 10, "powerLimit": 10,
                            "storageRate": 10, "travelTime": 0, "travelRate": 0}],
                 "assignment": {"К01": "A", "К02": "B"},
-                "limitHours": 20, "tariffMode": "container_hour"}
+                "limitHours": 20}
         self.assertEqual(evaluate(task)["totalCost"], 101)
         answer = solve_branch_bound(task)
         self.assertEqual(answer["bestCost"], 20)
@@ -64,11 +63,10 @@ class BranchBoundTests(unittest.TestCase):
         self.assertTrue(answer["provenOptimal"])
         self.assertEqual(answer["bestCost"], 53637)
 
-    def test_matches_exhaustive_search_for_both_tariffs(self):
-        for mode in ("container_hour", "ton_hour"):
-            with self.subTest(mode=mode):
-                task = generate_example(5, 3, 7)
-                task["tariffMode"] = mode
+    def test_matches_exhaustive_search(self):
+        for seed in (7, 26):
+            with self.subTest(seed=seed):
+                task = generate_example(5, 3, seed)
                 exact = solve_branch_bound(task, {"nodeLimit": 10000})
                 brute_costs = []
                 for sites in product((site["id"] for site in task["sites"]), repeat=5):
@@ -106,6 +104,8 @@ class BranchBoundTests(unittest.TestCase):
         self.assertEqual(answer["status"], "limit_with_plan")
         self.assertFalse(answer["provenOptimal"])
         self.assertEqual(answer["nodesVisited"], 1)
+        self.assertEqual(answer["initialSource"], "текущий ручной план")
+        self.assertEqual(answer["bestCost"], evaluate(task)["totalCost"])
         self.assertEqual(answer["tree"][-1]["status"], "limit")
         self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
 
@@ -133,20 +133,15 @@ class BranchBoundTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 solve_branch_bound(task, {"nodeLimit": value})
 
-    def test_genetic_plan_can_start_limited_exact_search(self):
-        task = generate_example(20, 3, 26)
-        genetic = solve_genetic(task)
-        answer = solve_branch_bound(task, {"nodeLimit": 1,
-                                           "incumbentAssignment": genetic["bestAssignment"]})
-        self.assertEqual(answer["status"], "limit_with_plan")
-        self.assertFalse(answer["provenOptimal"])
-        self.assertLessEqual(answer["bestCost"], genetic["bestCost"])
-        self.assertEqual(answer["initialSource"], "переданный допустимый план")
-
-    def test_invalid_initial_plan_is_rejected(self):
+    def test_removed_initial_plan_option_is_not_used(self):
         task = generate_example(3, 2, 3)
-        with self.assertRaisesRegex(ValueError, "начальный план"):
-            solve_branch_bound(task, {"incumbentAssignment": {}})
+        previous_assignment = task["assignment"]
+        task["assignment"] = {}
+        answer = solve_branch_bound(task, {"nodeLimit": 1,
+                                           "incumbentAssignment": previous_assignment})
+        self.assertEqual(answer["initialSource"], "без начального плана")
+        self.assertEqual(answer["status"], "limit_no_plan")
+        self.assertNotIn("bestAssignment", answer)
 
 
 if __name__ == "__main__":
