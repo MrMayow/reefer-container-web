@@ -87,7 +87,7 @@ def solve_exhaustive(task, options=None, progress=None):
         valid_count += valid
         if cost is not None and (best_cost is None or cost < best_cost):
             best_cost, best = cost, plan
-            record("Найден более дешёвый допустимый план")
+            record("Найден лучший план")
         elif cost == best_cost and plan is not None and plan < best:
             best = plan  # Равные минимумы выбираются одинаково при любом порядке процессов.
         if checked_count >= next_checkpoint:
@@ -129,7 +129,7 @@ def solve_exhaustive(task, options=None, progress=None):
         message = "Все назначения проверены."
     else:
         status = "infeasible"
-        message = "Все назначения проверены: допустимого размещения нет."
+        message = "Допустимого размещения нет."
     record(message)
 
     answer = {"method": "exhaustive", "implemented": True, "status": status,

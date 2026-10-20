@@ -24,7 +24,14 @@ def solve_genetic(task, options=None):
     mutation_type = options.get("mutationType", "swap")
     if mutation_type not in ("move", "swap"):
         raise ValueError("Тип мутации: выберите перенос или обмен.")
-    mutation_probability = integer_option(options, "mutationProbability", 60, 0, 100)
+    mutation_probability = options.get("mutationProbability", 0.6)
+    if type(mutation_probability) not in (int, float) or not 0 <= mutation_probability <= 1:
+        raise ValueError("Вероятность мутации: введите число от 0 до 1.")
+    result = {"method": "genetic", "implemented": True, "provenOptimal": False,
+              "populationSize": population_size, "seed": seed,
+              "selectionMethod": selection_method,
+              "mutationEnabled": mutation_enabled, "mutationType": mutation_type,
+              "mutationProbability": mutation_probability}
     rng = random.Random(seed)
 
     containers = task["containers"]
@@ -154,15 +161,12 @@ def solve_genetic(task, options=None):
         if candidate is not None:
             population.append(candidate)
         elif not limited:
-            break  # Поиск завершён: других допустимых размещений нет.
+            break  # Поиск завершен: других допустимых размещений нет.
+    result.update(initialAttempts=initial_attempts, initialNodesVisited=initial_nodes)
     if not population:
-        return {"method": "genetic", "implemented": True, "status": "not_found",
-                "provenOptimal": False, "message": "Допустимый план не найден. Это не доказывает, что его нет.",
-                "history": [], "generationsRun": 0, "populationSize": population_size,
-                "initialAttempts": initial_attempts, "initialNodesVisited": initial_nodes,
-                "seed": seed, "selectionMethod": selection_method,
-                "mutationEnabled": mutation_enabled, "mutationType": mutation_type,
-                "mutationProbability": mutation_probability}
+        return {**result, "status": "not_found",
+                "message": "План не найден; отсутствие решения не доказано.",
+                "history": [], "generationsRun": 0}
     best = min(population, key=plan_cost)
     history = []
     used_parents = set()
@@ -242,7 +246,7 @@ def solve_genetic(task, options=None):
                 continue
             event["mutation"] = "skipped" if mutation_enabled else "disabled"
             if (mutation_enabled and mutation_probability > 0
-                    and rng.random() < mutation_probability / 100):
+                    and rng.random() < mutation_probability):
                 changed, attempts, retired_skips = mutate(child)
                 event.update(mutation="changed" if changed != child else "unchanged",
                              mutationAttempts=attempts, mutationRetiredSkips=retired_skips)
@@ -284,12 +288,6 @@ def solve_genetic(task, options=None):
 
     best_cost = plan_cost(best)
     assignment = verified_assignment(task, best, best_cost)
-    return {"method": "genetic", "implemented": True, "status": "found",
-            "provenOptimal": False, "message": "Найден допустимый план. Минимальная стоимость не подтверждена.",
+    return {**result, "status": "found", "message": "Минимальная стоимость не доказана.",
             "bestCost": best_cost, "bestAssignment": assignment,
-            "history": history, "plans": plans, "generationsRun": generations,
-            "populationSize": population_size, "seed": seed,
-            "initialAttempts": initial_attempts, "initialNodesVisited": initial_nodes,
-            "selectionMethod": selection_method,
-            "mutationEnabled": mutation_enabled, "mutationType": mutation_type,
-            "mutationProbability": mutation_probability}
+            "history": history, "plans": plans, "generationsRun": generations}

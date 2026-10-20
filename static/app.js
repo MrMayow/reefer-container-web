@@ -21,6 +21,13 @@ function make(tag, text = "", className = "") {
   return node;
 }
 
+function addButton(parent, text, action) {
+  const button = make("button", text);
+  button.onclick = action;
+  parent.append(button);
+  return button;
+}
+
 function cell(row, value) {
   const td = make("td");
   if (value instanceof Node) td.append(value);
@@ -75,6 +82,12 @@ function resetRuns() {
   for (const method in runs) runs[method] = null;
 }
 
+function updateTask() {
+  resetRuns();
+  renderEditors();
+  refresh();
+}
+
 function numberField(value, label, change) {
   const input = make("input");
   input.type = "number";
@@ -116,9 +129,7 @@ function renderEditors() {
       task.containers = task.containers.filter((item) => item.id !== c.id);
       delete task.assignment[c.id];
       selected = "";
-      resetRuns();
-      renderEditors();
-      refresh();
+      updateTask();
     }));
     containers.append(row);
   }
@@ -138,9 +149,7 @@ function renderEditors() {
       for (const id in task.assignment) {
         if (task.assignment[id] === site.id) task.assignment[id] = null;
       }
-      resetRuns();
-      renderEditors();
-      refresh();
+      updateTask();
     }));
     sites.append(row);
   }
@@ -276,7 +285,7 @@ document.onpointercancel = () => {
 
 function renderSummary() {
   $("total-cost").textContent = calculation ? money(calculation.totalCost) : "—";
-  $("evaluation-time").textContent = calculation ? "Время пересчёта: " + seconds(calculation.elapsedSeconds) : "";
+  $("evaluation-time").textContent = calculation ? "Время пересчета: " + seconds(calculation.elapsedSeconds) : "";
   $("plan-status").textContent = !calculation ? "Проверьте данные" :
     calculation.valid ? "План допустим" : "План недопустим";
   const issues = $("issues");
@@ -401,8 +410,8 @@ function renderExhaustiveProgress(state, finished = false) {
     metric("Процессов", fmt.format(state.workers)),
     metric("Скорость", speed ? fmt.format(Math.round(speed)) + " назнач./с" : "—"),
     metric("Прошло", seconds(state.elapsedSeconds)),
-    metric("Осталось примерно", finished ? "0 с" : remaining));
-  box.replaceChildren(make("p", finished ? "Перебор завершён" : "Перебор выполняется"), bar, stats);
+    metric("Осталось", finished ? "0 с" : remaining));
+  box.replaceChildren(make("p", finished ? "Перебор завершен" : "Перебор выполняется"), bar, stats);
 }
 
 function renderRun(method) {
@@ -417,16 +426,17 @@ function renderRun(method) {
   else if (hasPlan) title = "Лучший найденный план: " + money(run.bestCost);
   else if (run.provenInfeasible) title = "Допустимого плана нет";
   box.append(make("h3", title));
-  box.append(make("p", "Время расчёта: " + seconds(run.elapsedSeconds)));
+  box.append(make("p", "Время расчета: " + seconds(run.elapsedSeconds)));
   if (run.message) box.append(make("p", run.message));
   if (method === "genetic") {
-    const selection = run.selectionMethod === "best_half" ? "лучшая половина" : "турнир из трёх";
-    box.append(make("p", "Отбор родителей: " + selection + "."));
+    const selection = run.selectionMethod === "best_half" ? "лучшая половина" : "турнир из трех";
     const mutation = run.mutationType === "swap" ? "обмен двух контейнеров" : "перенос контейнера";
-    box.append(make("p", run.mutationEnabled ? "Мутация: " + mutation + ". Вероятность: " + run.mutationProbability + "%." : "Мутации выключены."));
+    box.append(make("p", "Отбор: " + selection + ". " + (run.mutationEnabled
+      ? "Мутация: " + mutation + ", p = " + String(run.mutationProbability).replace(".", ",") + "."
+      : "Мутации выключены.")));
     if (run.mutationEnabled && run.mutationProbability > 0 &&
         run.history?.every((stage) => stage.mutations === 0)) {
-      box.append(make("p", "За этот запуск допустимых мутаций выбранного типа не получилось. Вероятность задаёт попытку, а не гарантирует изменение плана."));
+      box.append(make("p", "Допустимых мутаций не получилось."));
     }
   }
   if (hasPlan && calculation?.valid) {
@@ -449,9 +459,9 @@ function renderRun(method) {
   box.append(plot(records, ["bestCost"], index,
     method === "genetic" ? "Лучшая стоимость по поколениям" : "Лучшая стоимость по этапам"));
   if (method === "branch_bound") {
-    box.append(make("h4", "Отсечённые ветви"));
+    box.append(make("h4", "Отсеченные ветви"));
     box.append(plot(records, ["prunedBound", "prunedCapacity"], index, "Отсечения по оценке и ресурсам"));
-    box.append(make("p", "Тёмная линия — по оценке, светлая — по ресурсам."));
+    box.append(make("p", "Темная линия — по оценке, светлая — по ресурсам."));
   }
   const event = stage.event || "Поколение " + stage.generation;
   const label = make("label", "Этап " + (index + 1) + " из " + records.length + ": " + event, "stage");
@@ -469,13 +479,13 @@ function renderRun(method) {
     stats.append(metric("Поколение", stage.generation), metric("Разных планов", stage.distinctPlans + " / " + run.populationSize),
       metric("Скрещивания", stage.crossovers), metric("Мутации", stage.mutations),
       metric("Исправления", stage.repairs), metric("Разных родителей", stage.parentsUsed),
-      metric("Добрано из прежних", stage.carriedOver), metric("Из резерва после исправления", stage.immediateReserves),
-      metric("Выбывших планов за запуск", stage.discardedCount));
+      metric("Добрано из прежних", stage.carriedOver), metric("Резерв после исправления", stage.immediateReserves),
+      metric("Выбыло за запуск", stage.discardedCount));
     let stagnant = 0;
     for (let i = index; i > 0 && records[i].bestCost === records[i - 1].bestCost; i--) stagnant++;
     stats.append(metric("Поколений без улучшения", stagnant));
     if (index > 0 && stage.parentPool.length < 2) {
-      box.append(make("p", "В родительской группе меньше двух разных планов: скрещивания и мутации потомков в этом поколении не выполнялись. Используется добор."));
+      box.append(make("p", "Меньше двух родителей: вместо скрещивания выполняется добор."));
     }
     if (index > 0) {
       const previous = new Set(records[index - 1].population);
@@ -531,7 +541,7 @@ async function runMethod(method) {
       selectionMethod: $("ga-selection").value,
       mutationEnabled: $("ga-mutation-enabled").checked,
       mutationType: $("ga-mutation-type").value,
-      mutationProbability: Number($("ga-mutation-probability").value)
+      mutationProbability: $("ga-mutation-probability").valueAsNumber
     };
   } else if (method === "branch_bound") {
     options = { nodeLimit: Number($("bb-limit").value) };
@@ -564,7 +574,7 @@ async function runMethod(method) {
     if (controller) renderExhaustiveProgress(answer, true);
   } catch (error) {
     if (started === revision) {
-      runs[method] = { error: error.name === "AbortError" ? "Расчёт остановлен." : error.message };
+      runs[method] = { error: error.name === "AbortError" ? "Расчет остановлен." : error.message };
       if (controller) $("exhaustive-progress").replaceChildren();
     }
   } finally {
@@ -594,9 +604,7 @@ $("generate-button").onclick = async () => {
     });
     task = next;
     selected = "";
-    resetRuns();
-    renderEditors();
-    refresh();
+    updateTask();
   } catch (error) { message(error.message); }
 };
 
@@ -607,9 +615,7 @@ $("add-container").onclick = () => {
   const id = "К" + String(n).padStart(2, "0");
   task.containers.push({ id, weight: 18, power: 5, storage: 16 });
   task.assignment[id] = null;
-  resetRuns();
-  renderEditors();
-  refresh();
+  updateTask();
 };
 
 $("add-site").onclick = () => {
@@ -617,9 +623,7 @@ $("add-site").onclick = () => {
   const id = [..."ABCDEFGHIJ"].find((name) => !task.sites.some((s) => s.id === name));
   task.sites.push({ id, places: 5, massLimit: 110, powerLimit: 35,
     storageRate: 145, travelTime: 2, travelRate: 550 });
-  resetRuns();
-  renderEditors();
-  refresh();
+  updateTask();
 };
 
 $("limit-hours").oninput = (event) => {

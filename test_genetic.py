@@ -26,7 +26,7 @@ class GeneticTests(unittest.TestCase):
             self.assertIn(parent, pool)
             draws += 1
             if draws % 2 == 0:
-                # Скрещивание даёт AAA, хотя на площадке только два места.
+                # Скрещивание дает AAA, хотя на площадке только два места.
                 rng.random.side_effect = chain((0.0, 0.0, 0.9), repeat(0.9))
             return parent
 
@@ -49,7 +49,7 @@ class GeneticTests(unittest.TestCase):
         original_cost = evaluate(task)["totalCost"]
         answer = solve_genetic(task, {"generations": 60, "populationSize": 36,
                                       "seed": 26, "selectionMethod": "best_half",
-                                      "mutationType": "move", "mutationProbability": 60})
+                                      "mutationType": "move", "mutationProbability": 0.6})
         self.assertGreater(answer["history"][0]["distinctPlans"], 1)
         self.assertLess(answer["bestCost"], original_cost)
         self.assertLessEqual(answer["bestCost"], answer["history"][0]["bestCost"])
@@ -101,7 +101,7 @@ class GeneticTests(unittest.TestCase):
             with self.subTest(selection=selection):
                 answer = solve_genetic(task, {"generations": 8, "populationSize": 24,
                                               "selectionMethod": selection,
-                                              "mutationProbability": 100})
+                                              "mutationProbability": 1})
                 self.assertGreater(sum(stage["repairs"] for stage in answer["history"]), 0)
                 self.assertGreater(sum(stage["mutations"] for stage in answer["history"]), 0)
                 self.assertTrue(all(stage["populationCount"] == stage["distinctPlans"]
@@ -117,7 +117,7 @@ class GeneticTests(unittest.TestCase):
             with self.subTest(selection=selection):
                 answer = solve_genetic(task, {"generations": 4, "populationSize": 8,
                                               "selectionMethod": selection, "mutationType": "move",
-                                              "mutationProbability": 100})
+                                              "mutationProbability": 1})
                 self.assertTrue(all(stage["populationCount"] == stage["distinctPlans"] == 2
                                     for stage in answer["history"]))
 
@@ -126,7 +126,7 @@ class GeneticTests(unittest.TestCase):
         for selection in ("tournament", "best_half"):
             with self.subTest(selection=selection):
                 answer = solve_genetic(task, {"generations": 8, "populationSize": 24,
-                                              "selectionMethod": selection, "mutationProbability": 100})
+                                              "selectionMethod": selection, "mutationProbability": 1})
                 discarded = set()
                 reserves_from_pool = 0
                 for before, stage in zip(answer["history"], answer["history"][1:]):
@@ -241,7 +241,7 @@ class GeneticTests(unittest.TestCase):
                 for site in task["sites"]:
                     site.update(places=1, massLimit=100, powerLimit=100)
                 answer = solve_genetic(task, {"generations": 3, "populationSize": 4,
-                                              "selectionMethod": "best_half", "mutationProbability": 100})
+                                              "selectionMethod": "best_half", "mutationProbability": 1})
                 self.assertEqual(answer["history"][0]["populationCount"], count)
                 for stage in answer["history"][1:]:
                     self.assertEqual(len(stage["parentPool"]), 1)
@@ -299,7 +299,7 @@ class GeneticTests(unittest.TestCase):
             site.update(places=3, massLimit=10, powerLimit=10,
                         storageRate=j + 1, travelTime=0, travelRate=0)
         rng = Mock(wraps=random.Random(26))
-        rng.random.return_value = 0.0  # Сначала всегда пробуется дешёвая площадка A.
+        rng.random.return_value = 0.0  # Сначала всегда пробуется дешевая площадка A.
         with patch("genetic.random.Random", return_value=rng):
             answer = solve_genetic(task, {"generations": 1, "populationSize": 12,
                                           "mutationEnabled": False})
@@ -393,18 +393,27 @@ class GeneticTests(unittest.TestCase):
         options = {"generations": 8, "populationSize": 8, "seed": 7,
                    "mutationType": "move"}
         never = solve_genetic(task, {**options, "mutationProbability": 0})
-        always = solve_genetic(task, {**options, "mutationProbability": 100})
+        always = solve_genetic(task, {**options, "mutationProbability": 1})
         self.assertEqual(never["mutationProbability"], 0)
-        self.assertEqual(always["mutationProbability"], 100)
+        self.assertEqual(always["mutationProbability"], 1)
         self.assertEqual(sum(stage["mutations"] for stage in never["history"]), 0)
         self.assertGreater(sum(stage["mutations"] for stage in always["history"]), 0)
         disabled = solve_genetic(task, {**options, "mutationEnabled": False})
-        # Поиск одинаковый; подробный журнал различает выключенные мутации и вероятность 0%.
+        # Поиск одинаковый; подробный журнал различает выключенные мутации и вероятность 0.
         self.assertEqual([{k: v for k, v in stage.items() if k != "events"} for stage in never["history"]],
                          [{k: v for k, v in stage.items() if k != "events"} for stage in disabled["history"]])
         self.assertEqual(never["plans"], disabled["plans"])
         self.assertEqual(solve_genetic(task, options),
-                         solve_genetic(task, {**options, "mutationProbability": 60}))
+                         solve_genetic(task, {**options, "mutationProbability": 0.6}))
+
+    def test_fractional_mutation_probability(self):
+        task = generate_example(6, 3, 26)
+        for probability in (0.005, 0.125, 0.6):
+            with self.subTest(probability=probability):
+                answer = solve_genetic(task, {"generations": 2, "populationSize": 8,
+                                              "mutationProbability": probability})
+                self.assertEqual(answer["mutationProbability"], probability)
+                self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
 
     def test_no_plan_found_is_not_a_proof(self):
         task = generate_example(2, 1, 3)
@@ -419,7 +428,7 @@ class GeneticTests(unittest.TestCase):
         for selection in ("tournament", "best_half"):
             with self.subTest(selection=selection):
                 answer = solve_genetic(task, {"generations": 6, "populationSize": 16,
-                                              "selectionMethod": selection, "mutationProbability": 100})
+                                              "selectionMethod": selection, "mutationProbability": 1})
                 discarded = set()
                 repairs = 0
                 for stage in answer["history"]:
@@ -438,7 +447,7 @@ class GeneticTests(unittest.TestCase):
     def test_generation_trace_matches_actual_population_and_parent_selection(self):
         task = generate_example(12, 3, 26)
         answer = solve_genetic(task, {"generations": 4, "populationSize": 12,
-                                      "mutationProbability": 100})
+                                      "mutationProbability": 1})
         plans = answer["plans"]
         self.assertEqual(len(plans), len({tuple(plan["chromosome"]) for plan in plans}))
         for stage in answer["history"]:
@@ -475,8 +484,11 @@ class GeneticTests(unittest.TestCase):
         for options in ({"generations": 1.5}, {"populationSize": 1000},
                         {"seed": -1}, {"selectionMethod": "unknown"},
                         {"mutationEnabled": 1}, {"mutationType": "unknown"},
-                        {"mutationProbability": -1}, {"mutationProbability": 101},
-                        {"mutationProbability": 1.5}, {"mutationProbability": True}):
+                        {"mutationProbability": -0.01}, {"mutationProbability": 1.01},
+                        {"mutationProbability": 60}, {"mutationProbability": True},
+                        {"mutationProbability": "0.6"}, {"mutationProbability": None},
+                        {"mutationProbability": float("nan")},
+                        {"mutationProbability": float("inf")}):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 solve_genetic(task, options)
 

@@ -1,10 +1,10 @@
-"""Данные, проверка плана и расчёт стоимости размещения."""
+"""Данные, проверка плана и расчет стоимости размещения."""
 
 import random
 
 
 def generate_example(container_count=12, site_count=3, seed=26):
-    """Создаёт правдоподобный пример и заведомо допустимое начальное назначение."""
+    """Создает правдоподобный пример и заведомо допустимое начальное назначение."""
     if type(container_count) is not int or not 1 <= container_count <= 80:
         raise ValueError("Число контейнеров должно быть от 1 до 80.")
     if type(site_count) is not int or not 1 <= site_count <= 10:
@@ -93,7 +93,7 @@ def placement_options(task):
 
 
 def evaluate(data):
-    """Возвращает стоимость и нарушения; недопустимый план не выдаётся за решение."""
+    """Возвращает стоимость и нарушения; недопустимый план не выдается за решение."""
     if not isinstance(data, dict):
         raise ValueError("Данные задачи должны быть объектом JSON.")
     containers = data.get("containers")

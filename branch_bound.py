@@ -77,7 +77,7 @@ def solve_branch_bound(task, options=None):
             record("Промежуточный этап", depth)
 
         # Нижняя оценка: каждый оставшийся контейнер независимо выбирает
-        # самое дешёвое место среди ещё подходящих. Общий расход пока не суммируется.
+        # самое дешевое место среди еще подходящих. Общий расход пока не суммируется.
         bound = cost
         for next_depth in range(depth, n):
             i = order[next_depth]
@@ -96,7 +96,7 @@ def solve_branch_bound(task, options=None):
             best = plan[:]
             best_cost = cost
             trace(parent, depth, cost, site, "plan", bound)
-            record("Найден лучший допустимый план", depth)
+            record("Найден лучший план", depth)
             return
 
         node = trace(parent, depth, cost, site, "branch", bound)
@@ -132,16 +132,16 @@ def solve_branch_bound(task, options=None):
 
     if stopped:
         status = "limit_with_plan" if best is not None else "limit_no_plan"
-        message = ("Достигнут лимит узлов. Показан лучший найденный допустимый план; поиск не завершён."
+        message = ("Лимит узлов: поиск не завершен."
                    if best is not None else
-                   "Достигнут лимит узлов. Допустимый план пока не найден; отсутствие решения не доказано.")
+                   "Лимит узлов: план не найден, отсутствие решения не доказано.")
     elif best is None:
         status = "infeasible"
-        message = "Все варианты отсечены или проверены: допустимого размещения нет."
+        message = "Допустимого размещения нет."
     else:
         status = "optimal"
         message = ""
-    record(message or "Поиск завершён.", 0)
+    record(message or "Поиск завершен.", 0)
     answer = {"method": "branch_bound", "implemented": True, "status": status,
               "message": message, "provenOptimal": status == "optimal",
               "provenInfeasible": status == "infeasible",

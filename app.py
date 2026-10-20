@@ -32,17 +32,20 @@ class LocalServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    def send_json(self, value, status=200):
-        body = json.dumps(value, ensure_ascii=False).encode("utf-8")
+    def send_body(self, body, content_type, status=200):
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type + "; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
+    def send_json(self, value, status=200):
+        body = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        self.send_body(body, "application/json", status)
+
     def stream_exhaustive(self, task, options):
-        """Отправляет промежуточные счётчики и затем полный результат."""
+        """Отправляет промежуточные счетчики и затем полный результат."""
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -56,7 +59,7 @@ class Handler(BaseHTTPRequestHandler):
             result = solve_exhaustive(task, options, lambda state: send_event({"type": "progress", **state}))
             send_event({"type": "result", "result": result})
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-            pass  # Пользователь закрыл страницу или остановил расчёт.
+            pass  # Пользователь закрыл страницу или остановил расчет.
         except (ValueError, TypeError) as exc:
             send_event({"type": "error", "error": str(exc)})
 
@@ -73,13 +76,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404, "Not found")
             return
         file = STATIC / name
-        body = file.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", (mimetypes.guess_type(file.name)[0] or "application/octet-stream") + "; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        content_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+        self.send_body(file.read_bytes(), content_type)
 
     def do_POST(self):
         if self.path not in ("/api/evaluate", "/api/generate", "/api/solve"):
@@ -108,7 +106,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path != "/api/generate":
                 result["elapsedSeconds"] = perf_counter() - started_at
             self.send_json(result)
-        except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (ValueError, TypeError) as exc:
             self.send_json({"error": str(exc)}, 400)
 
 

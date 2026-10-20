@@ -7,9 +7,9 @@
   <title>Размещение контейнеров</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css?v=6">
-  <script src="/app.js?v=20" defer></script>
-  <script src="/tree.js?v=1" defer></script>
-  <script src="/generation.js?v=5" defer></script>
+  <script src="/app.js?v=21" defer></script>
+  <script src="/tree.js?v=2" defer></script>
+  <script src="/generation.js?v=6" defer></script>
 </head>
 <body>
   <header><h1>Размещение рефрижераторных контейнеров</h1></header>
@@ -47,29 +47,29 @@
         <button data-method="branch_bound">Ветви и границы</button>
         <button data-method="exhaustive">Полный перебор</button>
       </nav>
-      <div id="manual-panel"><p>Изменяйте размещение на схеме и сравнивайте стоимость.</p></div>
+      <div id="manual-panel"></div>
       <div id="genetic-panel" hidden>
         <div class="controls">
           <label>Поколения <input id="ga-generations" type="number" min="1" max="200" value="60"></label>
-          <label>Максимальный размер популяции <input id="ga-population" type="number" min="4" max="80" value="36"></label>
+          <label>Размер популяции <input id="ga-population" type="number" min="4" max="80" value="36"></label>
           <label>Зерно <input id="ga-seed" type="number" min="0" max="999999" value="26"></label>
           <label>Отбор родителей
             <select id="ga-selection">
-              <option value="tournament">Турнир из трёх</option>
+              <option value="tournament">Турнир из трех</option>
               <option value="best_half">Лучшая половина</option>
             </select>
           </label>
           <button id="ga-run">Запустить</button>
         </div>
-        <label class="option"><input id="ga-mutation-enabled" type="checkbox" checked> Включить мутации</label>
+        <label class="option"><input id="ga-mutation-enabled" type="checkbox" checked> Мутации</label>
         <div class="controls">
           <label>Тип мутации
             <select id="ga-mutation-type">
-              <option value="swap">Обмен двух контейнеров</option>
-              <option value="move">Перенос контейнера</option>
+              <option value="swap">Обмен</option>
+              <option value="move">Перенос</option>
             </select>
           </label>
-          <label>Вероятность, % <input id="ga-mutation-probability" type="number" min="0" max="100" step="1" value="60"></label>
+          <label>Вероятность мутации <input id="ga-mutation-probability" type="number" min="0" max="1" step="any" value="0.6" required></label>
         </div>
         <div id="genetic-result" class="result"></div>
       </div>

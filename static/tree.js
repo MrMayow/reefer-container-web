@@ -2,13 +2,13 @@
 
 // Просмотр дерева. make, svgElement, money и fmt определены в app.js.
 function addSearchTree(box, run) {
-  const button = make("button", "Показать дерево поиска");
+  const button = make("button", "Показать дерево");
   const panel = make("div", "", "search-tree");
   panel.hidden = true;
   button.setAttribute("aria-expanded", "false");
   button.onclick = () => {
     panel.hidden = !panel.hidden;
-    button.textContent = panel.hidden ? "Показать дерево поиска" : "Скрыть дерево поиска";
+    button.textContent = panel.hidden ? "Показать дерево" : "Скрыть дерево";
     button.setAttribute("aria-expanded", String(!panel.hidden));
     if (!panel.hidden && !panel.children.length) renderSearchTree(panel, run);
   };
@@ -19,9 +19,9 @@ function renderSearchTree(box, run) {
   const tree = run.tree;
   const names = { branch: "Разветвление", bound: "Отсечено по стоимости",
     capacity: "Нет допустимого продолжения", plan: "Новый лучший план", limit: "Лимит узлов" };
-  box.append(make("p", "Узлы — назначения, № — порядок обхода. Пунктир — отсечение; тёмная рамка — итоговый план."));
-  if (run.treeTruncated) box.append(make("p", "Сохранены первые " + run.treeLimit + " шагов дерева. Сам поиск продолжался; схема показана частично."));
-  if (run.status.startsWith("limit")) box.append(make("p", "Поиск остановлен по лимиту. Непроверенные продолжения в схему не входят."));
+  box.append(make("p", "Узлы — назначения, № — порядок обхода. Пунктир — отсечение; темная рамка — итоговый план."));
+  if (run.treeTruncated) box.append(make("p", "Показаны первые " + run.treeLimit + " узлов; поиск продолжался."));
+  if (run.status.startsWith("limit")) box.append(make("p", "Достигнут лимит узлов; поиск не завершен."));
 
   // Листья располагаются по строкам, каждый родитель — между своими детьми.
   const children = tree.map(() => []);
@@ -41,10 +41,7 @@ function renderSearchTree(box, run) {
 
   const controls = make("div", "", "controls");
   function button(text, action) {
-    const node = make("button", text);
-    node.onclick = action;
-    controls.append(node);
-    return node;
+    return addButton(controls, text, action);
   }
   const previous = button("Предыдущий шаг", () => showStep(step - 1));
   const next = button("Следующий шаг", () => showStep(step + 1));
@@ -75,9 +72,9 @@ function renderSearchTree(box, run) {
   const svg = svgElement("svg", { viewBox: "0 0 " + width + " " + height, role: "img", "aria-label": "Дерево ветвей и границ" });
   canvas.append(svg);
   viewport.append(canvas);
-  box.append(controls, make("p", "Перетаскивайте фон мышью. Ctrl + колесо — масштаб под указателем. Нажмите узел для просмотра шага."), label, description, viewport);
+  box.append(controls, make("p", "Фон можно перетаскивать. Ctrl + колесо — масштаб, нажатие на узел — выбор шага."), label, description, viewport);
 
-  // Схема создаётся один раз. Дальше меняются только видимость и масштаб.
+  // Схема создается один раз. Дальше меняются только видимость и масштаб.
   const bestPath = [];
   const nodes = tree.map((node, i) => {
     const x = node.depth * 250 + 10;
@@ -108,11 +105,11 @@ function renderSearchTree(box, run) {
     for (let i = step; tree[i].parent !== null; i = tree[i].parent) assignments.unshift(tree[i].container + " → " + tree[i].site);
     const price = (value) => value === null ? "не вычислена" : money(value);
     description.replaceChildren(make("p", "Шаг " + (step + 1) + " из " + tree.length + ": " + names[active.status]),
-      make("p", "Путь: " + (assignments.join("; ") || "корень — контейнеры ещё не размещены")),
+      make("p", "Путь: " + (assignments.join("; ") || "корень")),
       make("p", "Стоимость назначений: " + money(active.cost) + ". Нижняя оценка: " + price(active.lowerBound) +
         ". Лучший план к этому шагу: " + (active.bestCost === null ? "пока нет" : money(active.bestCost)) + "."));
-    if (active.status === "bound") description.append(make("p", "Нижняя оценка не меньше стоимости известного плана: продолжение не даст более дешёвого размещения."));
-    if (active.status === "capacity") description.append(make("p", "Нарушено ограничение либо одному из оставшихся контейнеров не подходит ни одна площадка."));
+    if (active.status === "bound") description.append(make("p", "Нижняя оценка не лучше известной стоимости: ветвь отсечена."));
+    if (active.status === "capacity") description.append(make("p", "Для продолжения не хватает ресурсов или подходящих площадок."));
     previous.disabled = step === 0;
     next.disabled = step === tree.length - 1;
     if (focus) center(step);
