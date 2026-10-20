@@ -8,6 +8,33 @@ from model import evaluate, generate_example
 
 
 class BranchBoundTests(unittest.TestCase):
+    def test_large_case_improves_current_plan_within_default_limit(self):
+        task = generate_example(25, 5, 26)
+        initial_cost = evaluate(task)["totalCost"]
+        answer = solve_branch_bound(task)
+        self.assertLess(answer["bestCost"], initial_cost)
+        self.assertGreater(answer["improvements"], 0)
+        self.assertEqual(answer["status"], "limit_with_plan")
+        self.assertFalse(answer["provenOptimal"])
+        self.assertEqual(answer["nodesVisited"], 100_000)
+        self.assertEqual(answer["history"][0]["improvements"], 0)
+        improvements = [s["improvements"] for s in answer["history"]]
+        self.assertEqual(improvements, sorted(improvements))
+        self.assertEqual(improvements[-1], answer["improvements"])
+        self.assertEqual(answer["improvements"], sum(s["event"] == "Найден лучший план"
+                                                   for s in answer["history"]))
+        self.assertEqual(answer["history"][-1]["bestCost"], answer["bestCost"])
+        self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
+
+    def test_flat_history_is_correct_when_starting_plan_already_has_minimum_cost(self):
+        task = generate_example(5, 3, 26)
+        best = solve_branch_bound(task)
+        task["assignment"] = best["bestAssignment"]
+        answer = solve_branch_bound(task)
+        self.assertTrue(answer["provenOptimal"])
+        self.assertEqual(answer["improvements"], 0)
+        self.assertEqual({s["bestCost"] for s in answer["history"]}, {best["bestCost"]})
+
     def test_returns_to_another_branch_when_greedy_choice_is_more_expensive(self):
         task = {"containers": [{"id": "К01", "weight": 1, "power": 1, "storage": 1},
                                {"id": "К02", "weight": 1, "power": 1, "storage": 10}],
@@ -97,6 +124,22 @@ class BranchBoundTests(unittest.TestCase):
             costs.append(stage["bestCost"])
         self.assertEqual(costs, sorted(costs, reverse=True))
         self.assertEqual(costs[-1], answer["bestCost"])
+
+    def test_search_without_initial_plan_matches_independent_exhaustive_search(self):
+        for seed in (3, 7, 26, 42):
+            with self.subTest(seed=seed):
+                task = generate_example(5, 3, seed)
+                task["assignment"] = {}
+                costs = []
+                for sites in product((site["id"] for site in task["sites"]), repeat=5):
+                    assignment = dict(zip((c["id"] for c in task["containers"]), sites))
+                    checked = evaluate({**task, "assignment": assignment})
+                    if checked["valid"]:
+                        costs.append(checked["totalCost"])
+                answer = solve_branch_bound(task)
+                self.assertTrue(answer["provenOptimal"])
+                self.assertGreaterEqual(answer["improvements"], 1)
+                self.assertEqual(answer["bestCost"], min(costs))
 
     def test_limit_never_claims_proof(self):
         task = generate_example(12, 3, 26)

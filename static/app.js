@@ -344,29 +344,33 @@ function plot(records, keys, index, title) {
   const right = 775, top = 30, bottom = 215;
   const last = records.length - 1;
   const generations = records[0].generation !== undefined;
-  const x = (i) => left + i * (right - left) / Math.max(1, last);
+  const byNodes = records[0].nodesVisited !== undefined;
+  const label = (i) => generations ? records[i].generation : byNodes ? records[i].nodesVisited : i + 1;
+  const span = Math.max(1, label(last) - label(0));
+  const x = (i) => left + (label(i) - label(0)) * (right - left) / span;
   const y = (value) => bottom - (value - low) * (bottom - top) / (high - low);
-  const label = (i) => generations ? records[i].generation : i + 1;
   svg.append(svgElement("text", { x: left, y: 17, class: "chart-label" }, keys.length === 1 ? "Стоимость, ₽" : "Отсечения, шт."));
   for (let value = low; value <= high; value += step) {
     svg.append(svgElement("line", { x1: left, y1: y(value), x2: right, y2: y(value), class: "chart-grid" }),
       svgElement("text", { x: left - 10, y: y(value) + 4, "text-anchor": "end", class: "chart-label" }, fmt.format(value)));
   }
   svg.append(svgElement("path", { d: "M " + left + " " + top + " V " + bottom + " H " + right, class: "chart-axis" }));
-  const ticks = Math.min(5, last);
+  const ticks = byNodes ? Math.min(5, records[last].nodesVisited) : Math.min(5, last);
   for (let tick = 0; tick <= ticks; tick++) {
     const i = ticks ? Math.round(tick * last / ticks) : 0;
-    svg.append(svgElement("line", { x1: x(i), y1: bottom, x2: x(i), y2: bottom + 5, class: "chart-axis" }),
-      svgElement("text", { x: x(i), y: bottom + 22, "text-anchor": "middle", class: "chart-label" }, label(i)));
+    const tickX = byNodes ? left + tick * (right - left) / Math.max(1, ticks) : x(i);
+    const value = byNodes ? Math.round(tick * records[last].nodesVisited / Math.max(1, ticks)) : label(i);
+    svg.append(svgElement("line", { x1: tickX, y1: bottom, x2: tickX, y2: bottom + 5, class: "chart-axis" }),
+      svgElement("text", { x: tickX, y: bottom + 22, "text-anchor": "middle", class: "chart-label" }, fmt.format(value)));
   }
   svg.append(svgElement("text", { x: (left + right) / 2, y: 263, "text-anchor": "middle", class: "chart-label" },
-    generations ? "Поколение" : "Этап"));
+    generations ? "Поколение" : byNodes ? "Проверено узлов" : "Этап"));
   keys.forEach((key, color) => {
     const points = records.map((item, i) => Number.isFinite(item[key]) ? x(i) + "," + y(item[key]) : "").filter(Boolean);
     svg.append(svgElement("polyline", { points: points.join(" "), class: "line line-" + color }));
     if (Number.isFinite(records[index][key])) {
       const dot = svgElement("circle", { cx: x(index), cy: y(records[index][key]), r: 5, class: "dot dot-" + color });
-      dot.append(svgElement("title", {}, (generations ? "Поколение " : "Этап ") + label(index) + ": " +
+      dot.append(svgElement("title", {}, (generations ? "Поколение " : byNodes ? "Узел " : "Этап ") + label(index) + ": " +
         (keys.length === 1 ? money(records[index][key]) : fmt.format(records[index][key]))));
       svg.append(dot);
     }
@@ -444,6 +448,10 @@ function renderRun(method) {
   }
   if (method === "branch_bound") {
     box.append(make("p", "Начальный план: " + run.initialSource + ". Лимит узлов: " + fmt.format(run.nodeLimit) + "."));
+    if (hasPlan && run.improvements === 0) {
+      box.append(make("p", run.provenOptimal ? "Исходный план уже имеет минимальную стоимость."
+        : "Более дешевый план за этот лимит не найден; стоимость не менялась."));
+    }
     if (run.tree?.length) addSearchTree(box, run);
   }
   if (method === "exhaustive") {
@@ -457,7 +465,8 @@ function renderRun(method) {
   const stage = records[index];
   box.append(make("h4", "Лучшая стоимость"));
   box.append(plot(records, ["bestCost"], index,
-    method === "genetic" ? "Лучшая стоимость по поколениям" : "Лучшая стоимость по этапам"));
+    method === "genetic" ? "Лучшая стоимость по поколениям" : method === "branch_bound"
+      ? "Лучшая стоимость по узлам поиска" : "Лучшая стоимость по этапам"));
   if (method === "branch_bound") {
     box.append(make("h4", "Отсеченные ветви"));
     box.append(plot(records, ["prunedBound", "prunedCapacity"], index, "Отсечения по оценке и ресурсам"));
@@ -504,6 +513,7 @@ function renderRun(method) {
     }
   } else if (method === "branch_bound") {
     stats.append(metric("Узлов", fmt.format(stage.nodesVisited)),
+      metric("Улучшений", fmt.format(stage.improvements)),
       metric("Отсечено по оценке", fmt.format(stage.prunedBound)),
       metric("Отсечено по ресурсам", fmt.format(stage.prunedCapacity)),
       metric("Глубина", stage.depth + " / " + task.containers.length));

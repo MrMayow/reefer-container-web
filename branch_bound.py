@@ -32,6 +32,7 @@ def solve_branch_bound(task, options=None):
     plan = [-1] * n
     counts, weights, powers = [0] * m, [0] * m, [0] * m
     nodes = pruned_bound = pruned_capacity = 0
+    improvements = 0
     stopped = False
     history = []
     tree = []
@@ -54,6 +55,7 @@ def solve_branch_bound(task, options=None):
     def record(event, depth):
         snapshot = {"event": event, "nodesVisited": nodes,
                     "prunedBound": pruned_bound, "prunedCapacity": pruned_capacity,
+                    "improvements": improvements,
                     "depth": depth, "bestCost": best_cost,
                     "bestChromosome": best[:] if best is not None else None}
         if len(history) < 119:
@@ -67,7 +69,7 @@ def solve_branch_bound(task, options=None):
                 and powers[j] + containers[i]["power"] <= sites[j]["powerLimit"])
 
     def search(depth, cost, parent=None, site=None):
-        nonlocal nodes, pruned_bound, pruned_capacity, stopped, best, best_cost
+        nonlocal nodes, pruned_bound, pruned_capacity, improvements, stopped, best, best_cost
         if nodes >= node_limit:
             stopped = True
             trace(parent, depth, cost, site, "limit")
@@ -95,13 +97,16 @@ def solve_branch_bound(task, options=None):
         if depth == n:
             best = plan[:]
             best_cost = cost
+            improvements += 1
             trace(parent, depth, cost, site, "plan", bound)
             record("Найден лучший план", depth)
             return
 
         node = trace(parent, depth, cost, site, "branch", bound)
         i = order[depth]
-        for j in choices[i]:
+        # Сначала назначение лучшего плана, затем остальные площадки по стоимости.
+        branches = sorted(choices[i], key=lambda j: j != best[i]) if best is not None else choices[i]
+        for j in branches:
             if not fits(i, j):
                 pruned_capacity += 1
                 trace(node, depth + 1, cost + costs[i][j], j, "capacity")
@@ -146,6 +151,7 @@ def solve_branch_bound(task, options=None):
               "message": message, "provenOptimal": status == "optimal",
               "provenInfeasible": status == "infeasible",
               "rootLowerBound": root_bound, "nodesVisited": nodes,
+              "improvements": improvements,
               "prunedBound": pruned_bound, "prunedCapacity": pruned_capacity,
               "nodeLimit": node_limit, "history": history,
               "tree": tree, "treeLimit": tree_limit, "treeTruncated": tree_truncated}
