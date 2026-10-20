@@ -82,7 +82,8 @@ function renderGenerationDetails(box, run, index) {
 
   const kinds = { manual: "Ручной план", initial: "Начальный поиск", elite: "Сохранение лучшего",
     crossover: "Скрещивание", reserve: "Резерв после исправления",
-    carry: "Добор из прежней популяции", generate: "Поиск нового плана" };
+    carry: "Добор из прежней популяции", generate: "Поиск нового плана",
+    refresh: "Новый план после повторения популяции" };
   const statuses = { accepted: "Добавлен в популяцию", duplicate: "Отклонен: повтор",
     retired: "Отклонен: выбывший план", not_found: "План не найден" };
   box.append(make("h4", "Действия поколения"));
@@ -137,6 +138,8 @@ function renderGenerationDetails(box, run, index) {
         columns.push({ label: "После мутации", id: event.result, compare: columns.at(-1).id });
       }
     } else if (event.result !== null) columns.push({ label: "План", id: event.result });
+    if (event.kind === "refresh") preview.append(make("p",
+      "После поколения без новых особей. Все прежние и выбывшие планы исключены; лучший сохранен."));
     if (event.nodes !== undefined) preview.append(make("p", "Проверок назначений: " + fmt.format(event.nodes) +
       (event.limited ? ". Поиск остановлен по пределу проверок." : ". Поиск этой попытки завершен.")));
     if (event.kind === "carry") preview.append(make("p", run.selectionMethod === "best_half" ?

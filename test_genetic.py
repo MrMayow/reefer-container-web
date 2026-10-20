@@ -10,6 +10,80 @@ from model import evaluate, generate_example
 
 
 class GeneticTests(unittest.TestCase):
+    def test_cost_plateau_does_not_trigger_refresh_when_population_changes(self):
+        task = generate_example(25, 5, 26)
+        answer = solve_genetic(task, {"generations": 60, "populationSize": 36, "seed": 26,
+                                      "selectionMethod": "best_half", "mutationType": "swap",
+                                      "mutationProbability": 0.6})
+        plateau_steps = 0
+        for before, stage in zip(answer["history"], answer["history"][1:]):
+            self.assertTrue(set(stage["population"]) - set(before["population"]))
+            self.assertFalse(any(e["kind"] == "refresh" for e in stage["events"]))
+            if stage["bestCost"] == before["bestCost"]:
+                plateau_steps += 1
+        self.assertGreater(plateau_steps, 0)
+        self.assertLess(answer["bestCost"], answer["history"][0]["bestCost"])
+
+    def test_stalled_population_gets_an_unseen_plan_without_returning_retired_plans(self):
+        task = generate_example(1, 6, 26)
+        task["limitHours"] = 100
+        for site in task["sites"]:
+            site.update(places=1, massLimit=100, powerLimit=100)
+        for selection in ("best_half", "tournament"):
+            with self.subTest(selection=selection):
+                answer = solve_genetic(task, {"generations": 9, "populationSize": 4,
+                                              "selectionMethod": selection, "mutationEnabled": False})
+                history = answer["history"]
+                self.assertEqual(set(history[0]["population"]), set(history[1]["population"]))
+                seen = set(history[0]["population"])
+                refreshed = []
+                for before, stage in zip(history, history[1:]):
+                    for event in stage["events"]:
+                        if event["kind"] == "refresh" and event["status"] == "accepted":
+                            self.assertNotIn(event["result"], seen)
+                            self.assertIn(event["result"], stage["population"])
+                            refreshed.append(event["result"])
+                    self.assertEqual(stage["populationCount"], 4)
+                    self.assertEqual(len(set(stage["population"])), 4)
+                    self.assertLessEqual(stage["bestCost"], before["bestCost"])
+                    seen.update(stage["population"])
+                self.assertEqual(len(refreshed), 2)  # В задаче всего шесть допустимых планов.
+                self.assertEqual(len(seen), 6)
+                self.assertTrue(history[-1]["unseenExhausted"])
+                exhausted_at = next(i for i, stage in enumerate(history) if stage["unseenExhausted"])
+                self.assertFalse(any(e["kind"] == "refresh" for stage in history[exhausted_at + 1:]
+                                     for e in stage["events"]))
+                # Повторение после исчерпания планов допускается, копии внутри популяции — нет.
+                self.assertEqual(history[-1]["population"], history[-2]["population"])
+
+    def test_refresh_budget_is_not_treated_as_exhaustion(self):
+        task = generate_example(13, 5, 26)
+        answer = solve_genetic(task, {"generations": 60, "populationSize": 36,
+                                      "selectionMethod": "best_half", "mutationType": "swap"})
+        history = answer["history"]
+        seen = set(history[0]["population"])
+        limited_count = accepted_count = 0
+        for index, stage in enumerate(history[1:], 1):
+            for event in stage["events"]:
+                if event["kind"] != "refresh":
+                    continue
+                previous = history[index - 1]
+                earlier = history[index - 2]
+                self.assertFalse(set(previous["population"]) - set(earlier["population"]))
+                self.assertLessEqual(event["nodes"], 100_000)
+                if event["limited"]:
+                    limited_count += 1
+                    self.assertFalse(stage["unseenExhausted"])
+                if event["status"] == "accepted":
+                    accepted_count += 1
+                    self.assertNotIn(event["result"], seen)
+                    self.assertIn(event["result"], stage["population"])
+            self.assertEqual(stage["populationCount"], stage["distinctPlans"])
+            seen.update(stage["population"])
+        self.assertGreater(limited_count, 0)
+        self.assertGreater(accepted_count, 0)
+        self.assertTrue(evaluate({**task, "assignment": answer["bestAssignment"]})["valid"])
+
     def test_repair_tries_inherited_assignments_before_other_sites(self):
         task = generate_example(3, 2, 26)
         for container in task["containers"]:

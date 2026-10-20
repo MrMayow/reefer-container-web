@@ -489,8 +489,15 @@ function renderRun(method) {
     }
     if (index > 0) {
       const previous = new Set(records[index - 1].population);
-      stats.append(metric("Новых планов", stage.population.filter((id) => !previous.has(id)).length));
+      const newPlans = stage.population.filter((id) => !previous.has(id)).length;
+      stats.append(metric("Новых планов", newPlans));
+      if (!newPlans && !stage.unseenExhausted) {
+        const limited = stage.events.some((event) => event.kind === "refresh" && event.limited);
+        box.append(make("p", limited ? "Поиск нового плана достиг лимита 100 000 проверок."
+          : "Новых планов в этом поколении нет."));
+      }
     }
+    if (stage.unseenExhausted) box.append(make("p", "Все допустимые планы уже встречались в популяциях."));
     if (stage.generation === 0) {
       stats.append(metric("Попыток начального поиска", fmt.format(run.initialAttempts)),
         metric("Проверок назначений", fmt.format(run.initialNodesVisited)));
@@ -519,7 +526,7 @@ function renderRun(method) {
       const ids = task.containers.filter((_, i) => stage.bestChromosome[i] === j).map((c) => c.id);
       preview.append(make("p", "Площадка " + site.id + ": " + (ids.join(", ") || "—")));
     });
-    box.append(preview);
+    box.append(make("h4", method === "genetic" ? "Лучший план поколения" : "Лучший план этапа"), preview);
   }
   if (method === "genetic" && run.plans) addGenerationDetails(box, run, index);
   if (run.bestAssignment) {

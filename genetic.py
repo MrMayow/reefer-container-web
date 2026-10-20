@@ -148,6 +148,7 @@ def solve_genetic(task, options=None):
     events = [{"kind": "manual", "result": plan_id(initial), "status": "accepted"}] if population else []
     initial_attempts = initial_nodes = 0
     initial_budget = 50_000_000
+    unseen_exhausted = False
     for _ in range(population_size * 20):
         if len(population) >= population_size or initial_nodes >= initial_budget:
             break
@@ -161,6 +162,7 @@ def solve_genetic(task, options=None):
         if candidate is not None:
             population.append(candidate)
         elif not limited:
+            unseen_exhausted = True
             break  # Поиск завершен: других допустимых размещений нет.
     result.update(initialAttempts=initial_attempts, initialNodesVisited=initial_nodes)
     if not population:
@@ -173,6 +175,7 @@ def solve_genetic(task, options=None):
     carried_over = 0
     parent_pool = []
     retired_now = []
+    needs_refresh = False
 
     def record(generation, crossovers, mutations, repairs):
         history.append({"generation": generation, "bestCost": plan_cost(best),
@@ -185,7 +188,8 @@ def solve_genetic(task, options=None):
                         "population": [plan_id(plan) for plan in population],
                         "parentPool": [plan_id(plan) for plan in parent_pool],
                         "discarded": [plan_id(plan) for plan in retired_now],
-                        "discardedCount": len(discarded), "events": events})
+                        "discardedCount": len(discarded),
+                        "unseenExhausted": unseen_exhausted, "events": events})
 
     record(0, 0, 0, 0)
 
@@ -204,6 +208,16 @@ def solve_genetic(task, options=None):
         available_parents = parent_pool[:]
         new_population = [best]  # Элитизм: лучший план никогда не теряется.
         events = [{"kind": "elite", "result": plan_id(best), "status": "accepted"}]
+        # Если новых особей не было, сначала оставляем место для нового плана.
+        if needs_refresh and not unseen_exhausted:
+            candidate, nodes, limited = construct(
+                max_nodes=100_000, excluded=set(population) | discarded)
+            unseen_exhausted = candidate is None and not limited
+            events.append({"kind": "refresh", "result": plan_id(candidate) if candidate is not None else None,
+                           "status": "accepted" if candidate is not None else "not_found",
+                           "nodes": nodes, "limited": limited})
+            if candidate is not None:
+                new_population.append(candidate)
         used_parents = set()
         carried_over = 0
         crossovers = mutations = repairs = 0
@@ -278,6 +292,7 @@ def solve_genetic(task, options=None):
             if candidate is None:
                 break
             new_population.append(candidate)
+        needs_refresh = not set(new_population).difference(population)
         retired_now = [plan for plan in population if plan not in new_population]
         discarded.update(retired_now)
         population = new_population
